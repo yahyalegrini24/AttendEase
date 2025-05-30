@@ -1,13 +1,16 @@
-import { useState } from 'react';
+import { useState, useContext } from 'react';
 import { supabase } from '../utils/Supabase';
 import { useNavigate } from 'react-router-dom';
 import logo from '/logo.png';
+import { AuthContext } from '../context/AuthContext';
 
 export default function Login() {
+  const { setUser } = useContext(AuthContext);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const navigate = useNavigate();
 
   const handleLogin = async (e) => {
@@ -15,13 +18,38 @@ export default function Login() {
     setLoading(true);
     setError(null);
     
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    
-    if (error) {
-      setError(error.message);
+    try {
+      // 1. Authenticate with Supabase
+      const { data: { user }, error: authError } = await supabase.auth.signInWithPassword({ 
+        email, 
+        password 
+      });
+
+      if (authError) throw authError;
+
+      // 2. Fetch teacher data
+      const { data: teacherData, error: teacherError } = await supabase
+        .from('Teacher')
+        .select('*')
+        .eq('teacherId', user.id)  // Ensure this matches your DB column name
+        .single();
+
+      if (teacherError) throw teacherError;
+
+      // 3. Set user context
+      setUser({
+        ...teacherData,
+        email: user.email,
+        auth: user // Include the auth user object if needed
+      });
+
+      // 4. Navigate to home
+      navigate('/');
+
+    } catch (error) {
+      setError(error.message || "An error occurred during login");
+    } finally {
       setLoading(false);
-    } else {
-      navigate('/'); 
     }
   };
 
@@ -39,7 +67,7 @@ export default function Login() {
               />
             </div>
             <h1 className="text-3xl font-bold text-white tracking-tight">AttendEase</h1>
-            <p className="text-white/90 mt-2 font-light">Employee Attendance Portal</p>
+            <p className="text-white/90 mt-2 font-light">Student Attendance Management System</p>
           </div>
 
           {/* Login Form */}
@@ -61,7 +89,7 @@ export default function Login() {
                 <input
                   id="email"
                   type="email"
-                  placeholder="employee@company.com"
+                  placeholder="teacher@university.edu"
                   className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#006633]/50 focus:border-[#006633] transition-all shadow-sm"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -82,22 +110,30 @@ export default function Login() {
               <div className="relative">
                 <input
                   id="password"
-                  type="password"
+                  type={showPassword ? "text" : "password"}
                   placeholder="••••••••"
                   className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#006633]/50 focus:border-[#006633] transition-all shadow-sm"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
                 />
-                <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
-                  <svg className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                  </svg>
+                <div className="absolute inset-y-0 right-0 flex items-center pr-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="text-gray-400 hover:text-gray-500"
+                  >
+                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      {showPassword ? (
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                      ) : (
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0zM12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm0 16a6 6 0 100-12 6 6 0 000 12z" />
+                      )}
+                    </svg>
+                  </button>
                 </div>
               </div>
             </div>
-
-           
 
             <div className="pt-4">
               <button
@@ -130,7 +166,7 @@ export default function Login() {
           </form>
         </div>
 
-        <div className="text-center text-white/80 text-sm mt-8 font-light">
+        <div className="text-center  text-black/80 text-sm mt-8 font-light">
           © {new Date().getFullYear()} AttendEase. Secure Attendance System.
         </div>
       </div>

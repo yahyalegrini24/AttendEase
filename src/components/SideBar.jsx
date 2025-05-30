@@ -1,33 +1,66 @@
 /* eslint-disable no-unused-vars */
 import { useState, useEffect } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Home, Users, LogOut } from 'lucide-react';
+import { supabase } from '../utils/Supabase'; // Make sure this path is correct
 
 export default function Sidebar() {
   const [open, setOpen] = useState(true);
   const [activeHover, setActiveHover] = useState(null);
   const [isMobile, setIsMobile] = useState(false);
+  const [userEmail, setUserEmail] = useState('');
+  const [userName, setUserName] = useState('');
   const location = useLocation();
+  const navigate = useNavigate();
 
   useEffect(() => {
     const checkMobile = () => {
       const mobile = window.innerWidth < 768;
       setIsMobile(mobile);
-      if (mobile) setOpen(false); // Close sidebar by default on mobile
+      if (mobile) setOpen(false);
     };
     checkMobile();
     window.addEventListener('resize', checkMobile);
+
+    // Fetch user data when component mounts
+    const fetchUserData = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          setUserEmail(user.email);
+          // Extract name from email or use a default
+          const nameFromEmail = user.email.split('@')[0];
+          setUserName(nameFromEmail.charAt(0).toUpperCase() + nameFromEmail.slice(1));
+        }
+      } catch (error) {
+        console.error('Error fetching user data:', error);
+      }
+    };
+
+    fetchUserData();
+
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
+  const handleLogout = async () => {
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+      navigate('/login');
+    } catch (error) {
+      console.error('Error logging out:', error);
+      alert('Logout failed. Please try again.');
+    }
+  };
+
   const navItems = [
-    { to: '/', label: 'Dashboard', icon: Home },
-    { to: '/users', label: 'Attendance', icon: Users },
+    { to: '/', label: 'Sessions', icon: Home },
+    { to: '/users', label: 'TimeTable', icon: Users },
   ];
 
   return (
     <>
-      {/* Mobile Overlay - Only shows when sidebar is open on mobile */}
+      {/* Mobile Overlay */}
       {isMobile && open && (
         <div
           className="fixed inset-0 bg-black/50 z-20"
@@ -87,7 +120,7 @@ export default function Sidebar() {
               title={!open ? label : ''}
               onMouseEnter={() => setActiveHover(label)}
               onMouseLeave={() => setActiveHover(null)}
-              onClick={() => isMobile && setOpen(false)} // Close sidebar on mobile navigation
+              onClick={() => isMobile && setOpen(false)}
             >
               <div className="relative">
                 <Icon
@@ -127,29 +160,35 @@ export default function Sidebar() {
             onClick={() => isMobile && setOpen(false)}
           >
             <div className="w-9 h-9 rounded-full bg-white/25 flex items-center justify-center shadow-inner">
-              <span className="text-sm font-medium text-white">U</span>
+              <span className="text-sm font-medium text-white">
+                {userName ? userName.charAt(0) : 'U'}
+              </span>
             </div>
             {open && (
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate text-white">User Name</p>
-                <p className="text-xs text-white/70 truncate">admin@attendease.com</p>
+                <p className="text-sm font-medium truncate text-white">
+                  {userName || 'User Name'}
+                </p>
+                <p className="text-xs text-white/70 truncate">
+                  {userEmail || 'admin@attendease.com'}
+                </p>
               </div>
             )}
             {open && (
               <button 
                 className="text-white/70 hover:text-white p-1 hover:bg-white/10 rounded-lg transition-colors"
                 aria-label="Logout"
+                onClick={handleLogout}
+                title="Logout"
               >
                 <LogOut size={18} />
               </button>
             )}
           </div>
         </div>
-
-       
       </div>
 
-      {/* Mobile Menu Button - Shows only on mobile when sidebar is closed */}
+      {/* Mobile Menu Button */}
       {isMobile && !open && (
         <button
           onClick={() => setOpen(true)}
