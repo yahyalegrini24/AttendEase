@@ -2,14 +2,14 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Home, Users, LogOut } from 'lucide-react';
-import { supabase } from '../utils/Supabase'; // Make sure this path is correct
+import { supabase } from '../utils/Supabase';
+import { useAuth } from '../hooks/useAuth';
 
 export default function Sidebar() {
+  const { user } = useAuth();
   const [open, setOpen] = useState(true);
   const [activeHover, setActiveHover] = useState(null);
   const [isMobile, setIsMobile] = useState(false);
-  const [userEmail, setUserEmail] = useState('');
-  const [userName, setUserName] = useState('');
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -19,26 +19,9 @@ export default function Sidebar() {
       setIsMobile(mobile);
       if (mobile) setOpen(false);
     };
+    
     checkMobile();
     window.addEventListener('resize', checkMobile);
-
-    // Fetch user data when component mounts
-    const fetchUserData = async () => {
-      try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-          setUserEmail(user.email);
-          // Extract name from email or use a default
-          const nameFromEmail = user.email.split('@')[0];
-          setUserName(nameFromEmail.charAt(0).toUpperCase() + nameFromEmail.slice(1));
-        }
-      } catch (error) {
-        console.error('Error fetching user data:', error);
-      }
-    };
-
-    fetchUserData();
-
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
@@ -161,16 +144,16 @@ export default function Sidebar() {
           >
             <div className="w-9 h-9 rounded-full bg-white/25 flex items-center justify-center shadow-inner">
               <span className="text-sm font-medium text-white">
-                {userName ? userName.charAt(0) : 'U'}
+                {user?.name ? user.name.charAt(0).toUpperCase() : 'U'}
               </span>
             </div>
             {open && (
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium truncate text-white">
-                  {userName || 'User Name'}
+                  {user?.name || 'User Name'}
                 </p>
                 <p className="text-xs text-white/70 truncate">
-                  {userEmail || 'admin@attendease.com'}
+                  {user?.email || 'admin@attendease.com'}
                 </p>
               </div>
             )}
