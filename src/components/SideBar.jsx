@@ -1,7 +1,7 @@
 /* eslint-disable no-unused-vars */
 import { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, Home, Table,List, User, LogOut } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Home, Table,List, User, LogOut ,FileUp ,Edit} from 'lucide-react';
 import { supabase } from '../utils/Supabase';
 import { useAuth } from '../hooks/useAuth';
 
@@ -40,6 +40,9 @@ export default function Sidebar() {
     { to: '/', label: 'Sessions', icon: Home },
     { to: '/time-table', label: 'TimeTable', icon: Table },
     { to: '/students-lists', label: 'Students Lists', icon: List },
+    { to: '/export-page', label: 'Export Lists', icon: FileUp  },
+    { to: '/edit-session', label: 'Edit Sessions', icon: Edit  },
+
     { to: '/profile', label: 'Profile', icon: User },
   ];
 

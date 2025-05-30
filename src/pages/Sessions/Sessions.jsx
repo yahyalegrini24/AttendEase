@@ -4,12 +4,13 @@ import { useAuth } from '../../hooks/useAuth';
 import { supabase } from '../../utils/Supabase';
 import { Calendar, Clock, MapPin, Book, Users, ChevronRight } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
 
 const DAYS_OF_WEEK = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Saturday'];
 
 function Dashboard() {
   const { user } = useAuth();
- 
+  const navigate = useNavigate();
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedDay, setSelectedDay] = useState('Today');
@@ -78,6 +79,84 @@ function Dashboard() {
     setExpandedSession(expandedSession === sessionId ? null : sessionId);
   };
 
+  const generateSessionId = (sessionStructureId) => {
+    // Get 3 random digits (100-999)
+    const randomNumbers = Math.floor(100 + Math.random() * 900);
+    return `${sessionStructureId}${randomNumbers}`;
+  };
+
+  const handleStartAttendance = async (session) => {
+    // Show confirmation dialog
+    const confirmStart = window.confirm(
+      `Start attendance for:\n\n` +
+      `📚 Module: ${session.Module.moduleName}\n` +
+      `👥 Group: ${session.Group.groupName}\n` +
+      `📅 Day: ${session.Day.dayName}\n` +
+      `🏛️ Location: ${session.Classroom.Location} - ${session.Classroom.ClassNumber}`
+    );
+
+    if (!confirmStart) return;
+
+    try {
+      setLoading(true);
+
+      // Check if there's a previous session for this group/module
+      const { data: lastSession, error: lastSessionError } = await supabase
+        .from('Session')
+        .select('sessionNumber')
+        .eq('moduleId', session.moduleId)
+        .eq('groupId', session.groupId)
+        .order('sessionNumber', { ascending: false })
+        .limit(1)
+        .single();
+
+      if (lastSessionError && lastSessionError.code !== 'PGRST116') {
+        throw lastSessionError;
+      }
+
+      // Calculate next session number
+      const nextSessionNumber = (lastSession?.sessionNumber || 0) + 1;
+      const sessionId = generateSessionId(session.Session_structure_id);
+
+      // Create new session record
+      const { data: newSession, error } = await supabase
+        .from('Session')
+        .insert({
+          sessionId: sessionId,
+          sessionNumber: nextSessionNumber,
+          moduleId: session.moduleId,
+          classId: session.classId,
+          groupId: session.groupId,
+          teacherId: user.teacherId,
+          dayId: session.dayId,
+          TypeId:session.typeId,
+          date: new Date().toISOString()
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // Navigate to attendance page with all required parameters
+      navigate(`/sessions/${newSession.sessionId}/attendance`, {
+        state: {
+          courseName: session.Module.moduleName,
+          groupId: session.groupId,
+          groupName: session.Group.groupName,
+          moduleId: session.moduleId,
+          dayId: session.dayId,
+          sessionId:newSession.sessionId
+        }
+      });
+
+    } catch (error) {
+      console.error('Error creating session:', error);
+      alert('Failed to start attendance. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-screen">
@@ -100,7 +179,7 @@ function Dashboard() {
           </p>
         </div>
         
-        {/* Day Selector - Made more compact on mobile */}
+        {/* Day Selector */}
         <div className="w-full md:w-auto flex space-x-1 sm:space-x-2 overflow-x-auto pb-2 scrollbar-hide">
           <button
             onClick={() => setSelectedDay('Today')}
@@ -174,7 +253,7 @@ function Dashboard() {
                   />
                 </div>
 
-                {/* Session Tags - Stacked on mobile */}
+                {/* Session Tags */}
                 <div className="mt-2 sm:mt-3 flex flex-wrap gap-2 sm:gap-3">
                   <span className="inline-flex items-center px-2 py-0.5 sm:px-3 sm:py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
                     <Clock className="mr-1 w-3 h-3" />
@@ -226,7 +305,10 @@ function Dashboard() {
                   </div>
 
                   <div className="mt-3 sm:mt-4 flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-3">
-                    <button className="px-3 sm:px-4 py-1.5 sm:py-2 bg-[#006633] text-white rounded-lg text-sm font-medium hover:bg-[#00502a] transition-colors">
+                    <button 
+                      onClick={() => handleStartAttendance(session)}
+                      className="px-3 sm:px-4 py-1.5 sm:py-2 bg-[#006633] text-white rounded-lg text-sm font-medium hover:bg-[#00502a] transition-colors"
+                    >
                       Start Attendance
                     </button>
                     <button className="px-3 sm:px-4 py-1.5 sm:py-2 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors">
