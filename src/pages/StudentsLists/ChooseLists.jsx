@@ -468,7 +468,7 @@ const GroupManagement = () => {
             animate={{ opacity: 1 }}
             className="bg-white rounded-md p-3 ml-12 mb-2 shadow-sm border border-gray-100"
           >
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
               {item.groups.map(group => (
                 <motion.button
                   key={group.groupId}
@@ -509,7 +509,7 @@ const GroupManagement = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto px-4 py-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
         <AnimatePresence>
           {statusMessage && (
             <motion.div
@@ -532,26 +532,29 @@ const GroupManagement = () => {
           )}
         </AnimatePresence>
 
-        <div className="flex justify-between items-start mb-8">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-gray-800">Group Management</h1>
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">Group Management</h1>
             <p className="text-gray-600 mt-1">Manage your assigned student groups</p>
           </div>
-          <div className="flex gap-2">
-            <div className="relative">
+          <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+            <div className="relative w-full sm:w-auto">
               <button
                 onClick={() => setShowSemesterFilter(!showSemesterFilter)}
-                className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-md hover:bg-gray-50 text-gray-700"
+                className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-md hover:bg-gray-50 text-gray-700 w-full sm:w-auto justify-between sm:justify-start"
               >
-                <Filter size={18} />
-                {selectedSemester 
-                  ? semesters.find(s => s.SemesterId === selectedSemester)?.label || "Select Semester"
-                  : "Select Semester"}
+                <div className="flex items-center gap-2">
+                  <Filter size={18} />
+                  {selectedSemester 
+                    ? semesters.find(s => s.SemesterId === selectedSemester)?.label || "Select Semester"
+                    : "Select Semester"}
+                </div>
+                <ChevronDown size={16} className={`transition-transform ${showSemesterFilter ? 'rotate-180' : ''}`} />
               </button>
               
               {showSemesterFilter && (
-                <div className="absolute right-0 mt-2 w-56 bg-white rounded-md shadow-lg z-10 border border-gray-200">
-                  <div className="py-1">
+                <div className="absolute right-0 sm:left-0 mt-2 w-full sm:w-56 bg-white rounded-md shadow-lg z-10 border border-gray-200">
+                  <div className="py-1 max-h-60 overflow-y-auto">
                     <button
                       onClick={() => {
                         setSelectedSemester(null);
@@ -584,14 +587,14 @@ const GroupManagement = () => {
             <button
               onClick={onRefresh}
               disabled={refreshing}
-              className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-md hover:bg-gray-50 text-gray-700"
+              className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-md hover:bg-gray-50 text-gray-700 w-full sm:w-auto justify-center"
             >
               {refreshing ? (
                 <RefreshCw className="animate-spin" size={18} />
               ) : (
                 <RefreshCw size={18} />
               )}
-              Refresh
+              <span className="sm:inline">Refresh</span>
             </button>
           </div>
         </div>
@@ -605,8 +608,8 @@ const GroupManagement = () => {
           </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2">
-              <div className="bg-white rounded-xl shadow-sm p-6">
+            <div className="lg:col-span-2 order-1 lg:order-none">
+              <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6">
                 <h2 className="text-xl font-semibold text-gray-800 mb-4">Available Groups</h2>
                 
                 {organizedData.length > 0 ? (
@@ -625,8 +628,8 @@ const GroupManagement = () => {
               </div>
             </div>
 
-            <div className="lg:col-span-1">
-              <div className="bg-white rounded-xl shadow-sm p-6 sticky top-4">
+            <div className="lg:col-span-1 order-0 lg:order-none">
+              <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6 lg:sticky lg:top-4">
                 <div className="flex justify-between items-center mb-4">
                   <h2 className="text-xl font-semibold text-gray-800">Selected Groups</h2>
                   <span className="bg-emerald-600 text-white text-sm font-medium px-2 py-1 rounded-full">
@@ -644,34 +647,36 @@ const GroupManagement = () => {
 
                 {chosenGroups.length > 0 ? (
                   <div className="space-y-3">
-                    {chosenGroups.map(group => (
-                      <motion.div
-                        key={group.groupId}
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        className="bg-gray-50 rounded-lg p-3 border border-gray-200"
-                      >
-                        <div className="flex justify-between">
-                          <div>
-                            <div className="font-medium text-gray-800">{group.groupName}</div>
-                            <div className="text-xs text-emerald-600">
-                              {group.degreeName} • {group.yearName} • {group.sectionName}
-                            </div>
-                            {group.semesterLabel && (
-                              <div className="text-xs text-blue-600 mt-1">
-                                {group.semesterLabel}
+                    <div className="max-h-[300px] sm:max-h-[400px] overflow-y-auto pr-2">
+                      {chosenGroups.map(group => (
+                        <motion.div
+                          key={group.groupId}
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          className="bg-gray-50 rounded-lg p-3 border border-gray-200 mb-2"
+                        >
+                          <div className="flex justify-between">
+                            <div>
+                              <div className="font-medium text-gray-800">{group.groupName}</div>
+                              <div className="text-xs text-emerald-600">
+                                {group.degreeName} • {group.yearName} • {group.sectionName}
                               </div>
-                            )}
+                              {group.semesterLabel && (
+                                <div className="text-xs text-blue-600 mt-1">
+                                  {group.semesterLabel}
+                                </div>
+                              )}
+                            </div>
+                            <button
+                              onClick={() => removeGroup(group.groupId)}
+                              className="text-gray-400 hover:text-red-500"
+                            >
+                              <X size={18} />
+                            </button>
                           </div>
-                          <button
-                            onClick={() => removeGroup(group.groupId)}
-                            className="text-gray-400 hover:text-red-500"
-                          >
-                            <X size={18} />
-                          </button>
-                        </div>
-                      </motion.div>
-                    ))}
+                        </motion.div>
+                      ))}
+                    </div>
 
                     <button
                       onClick={saveSelectedGroups}
