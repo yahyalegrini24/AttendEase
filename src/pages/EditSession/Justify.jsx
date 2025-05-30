@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { supabase } from '../../utils/supabase';
+import { supabase } from '../../utils/Supabase';
 import { UserX, CheckCircle2, Clock, ChevronDown, ChevronUp, CheckCircle } from 'lucide-react';
 
 export default function JustifyAbsences() {
