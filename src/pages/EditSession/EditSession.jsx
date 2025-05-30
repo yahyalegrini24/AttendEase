@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
-import { supabase } from '../../utils/supabase';
+import { supabase } from '../../utils/Supabase';
 import { 
   Users, Calendar, Clock, BookOpen, CheckCircle, 
   XCircle, ChevronRight, Filter, ChevronDown, ChevronUp, School
