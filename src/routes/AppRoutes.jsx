@@ -19,13 +19,9 @@ export default function AppRoutes() {
   return (
     <Router>
       <Routes>
-        {/* Public Route */}
+        {/* Public Routes */}
+        <Route path="/" element={<Login />} />
         <Route path="/login" element={<Login />} />
-
-        {/* Redirect root to user-specific route if logged in */}
-        {user && (
-          <Route path="/" element={<Navigate to={`/user/${user.id}`} replace />} />
-        )}
 
         {/* Protected Routes */}
         <Route element={<ProtectedRoute />}>
