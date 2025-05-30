@@ -9,6 +9,7 @@ const DAYS_OF_WEEK = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'S
 
 function Dashboard() {
   const { user } = useAuth();
+ 
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedDay, setSelectedDay] = useState('Today');

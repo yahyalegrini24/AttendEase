@@ -5,6 +5,7 @@ import Login from '../pages/Login';
 import Profile from '../pages/Profile';
 import ProtectedRoute from './ProtectedRoute';
 import TimeTable from '../pages/TimeTable/TimeTable'; // Make sure to import TimeTable
+import StudentsLists from '../pages/StudentsLists/ChooseLists'; // Import if needed
 
 export default function AppRoutes() {
   return (
@@ -19,6 +20,7 @@ export default function AppRoutes() {
             <Route index element={<Sessions />} />
             <Route path="profile" element={<Profile />} />
             <Route path="time-table" element={<TimeTable />} />
+            <Route path="students-lists" element={<StudentsLists />} />
           </Route>
         </Route>
       </Routes>

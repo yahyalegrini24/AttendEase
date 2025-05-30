@@ -1,7 +1,7 @@
 /* eslint-disable no-unused-vars */
 import { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, Home, Table, User, LogOut } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Home, Table,List, User, LogOut } from 'lucide-react';
 import { supabase } from '../utils/Supabase';
 import { useAuth } from '../hooks/useAuth';
 
@@ -39,6 +39,7 @@ export default function Sidebar() {
   const navItems = [
     { to: '/', label: 'Sessions', icon: Home },
     { to: '/time-table', label: 'TimeTable', icon: Table },
+    { to: '/students-lists', label: 'Students Lists', icon: List },
     { to: '/profile', label: 'Profile', icon: User },
   ];
 
@@ -54,7 +55,7 @@ export default function Sidebar() {
 
       {/* Sidebar Container */}
       <div
-        className={`transition-all duration-300 ease-in-out rounded-2xl ${
+        className={`transition-all duration-300 ease-in-out rounded-4xl ${
           open ? 'w-64 translate-x-0' : 'w-20 -translate-x-full md:translate-x-0'
         } bg-gradient-to-b from-[#006633] to-[#004d26] text-white h-screen flex flex-col border-r border-white/10 fixed md:relative z-30`}
       >
