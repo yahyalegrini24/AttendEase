@@ -1,12 +1,13 @@
 /* eslint-disable no-unused-vars */
 import { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, Home, Table,List, User, LogOut ,FileUp ,Edit} from 'lucide-react';
+import { ChevronLeft, ChevronRight, Home, Table, List, User, LogOut, FileUp, Edit } from 'lucide-react';
 import { supabase } from '../utils/Supabase';
 import { useAuth } from '../hooks/useAuth';
 
 export default function Sidebar() {
   const { user } = useAuth();
+  const userId = user?.teacherId;
   const [open, setOpen] = useState(true);
   const [activeHover, setActiveHover] = useState(null);
   const [isMobile, setIsMobile] = useState(false);
@@ -19,7 +20,7 @@ export default function Sidebar() {
       setIsMobile(mobile);
       if (mobile) setOpen(false);
     };
-    
+
     checkMobile();
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
@@ -37,13 +38,12 @@ export default function Sidebar() {
   };
 
   const navItems = [
-    { to: '/', label: 'Sessions', icon: Home },
-    { to: '/time-table', label: 'TimeTable', icon: Table },
-    { to: '/students-lists', label: 'Students Lists', icon: List },
-    { to: '/export-page', label: 'Export Lists', icon: FileUp  },
-    { to: '/edit-session', label: 'Edit Sessions', icon: Edit  },
-
-    { to: '/profile', label: 'Profile', icon: User },
+    { to: `/user/${userId}`, label: 'Sessions', icon: Home },
+    { to: `/user/${userId}/time-table`, label: 'TimeTable', icon: Table },
+    { to: `/user/${userId}/students-lists`, label: 'Students Lists', icon: List },
+    { to: `/user/${userId}/export-page`, label: 'Export Lists', icon: FileUp },
+    { to: `/user/${userId}/edit-session`, label: 'Edit Sessions', icon: Edit },
+    { to: `/user/${userId}/profile`, label: 'Profile', icon: User },
   ];
 
   return (
@@ -147,7 +147,7 @@ export default function Sidebar() {
             } cursor-pointer`}
             onClick={() => {
               if (isMobile) setOpen(false);
-              navigate('/profile');
+              navigate(`/user/${userId}/profile`);
             }}
           >
             <div className="w-9 h-9 rounded-full bg-white/25 flex items-center justify-center shadow-inner">

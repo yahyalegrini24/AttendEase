@@ -43,8 +43,10 @@ export default function Login() {
         auth: user // Include the auth user object if needed
       });
 
-      // 4. Navigate to home
-      navigate('/');
+      // 4. Navigate to user-specific route
+    navigate(`/user/${user.id}`, {
+      replace: true
+    });
 
     } catch (error) {
       setError(error.message || "An error occurred during login");

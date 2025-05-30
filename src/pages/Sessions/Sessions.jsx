@@ -138,7 +138,7 @@ function Dashboard() {
       if (error) throw error;
 
       // Navigate to attendance page with all required parameters
-      navigate(`/sessions/${newSession.sessionId}/attendance`, {
+      navigate(`/user/${user.teacherId}/sessions/${newSession.sessionId}/attendance`, {
         state: {
           courseName: session.Module.moduleName,
           groupId: session.groupId,

@@ -178,7 +178,7 @@ export default function Attendance() {
       if (error) throw error;
 
       alert('Session completed successfully!');
-      navigate('/sessions');
+      navigate(`/user/${user.teacherId}/`);
     } catch (error) {
       console.error('Error confirming session:', error);
       alert('Failed to complete session');
@@ -404,7 +404,7 @@ export default function Attendance() {
                 Continue Session
               </button>
               <button
-                onClick={() => navigate('/sessions')}
+                onClick={() => navigate(`/user/${user.teacherId}/`)}
                 className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
               >
                 Cancel Session

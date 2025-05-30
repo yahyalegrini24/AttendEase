@@ -1,39 +1,50 @@
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import MainLayout from '../layout/MainLayout';
 import Sessions from '../pages/Sessions/Sessions';
-import Attendance from '../pages/Sessions/Attendance'
+import Attendance from '../pages/Sessions/Attendance';
 import Login from '../pages/Login';
 import Profile from '../pages/Profile';
 import ProtectedRoute from './ProtectedRoute';
-import TimeTable from '../pages/TimeTable/TimeTable'; // Make sure to import TimeTable
-import StudentsLists from '../pages/StudentsLists/ChooseLists'; // Import if needed
-import ExportPage from '../pages/Export/ExportPage'; // Import if needed
-import EditSession from '../pages/EditSession/EditSession'; // Import if needed
+import TimeTable from '../pages/TimeTable/TimeTable';
+import StudentsLists from '../pages/StudentsLists/ChooseLists';
+import ExportPage from '../pages/Export/ExportPage';
+import EditSession from '../pages/EditSession/EditSession';
+import Justify from '../pages/EditSession/Justify';
+
+import { useAuth } from '../hooks/useAuth';
 
 export default function AppRoutes() {
+  const { user } = useAuth();
+
   return (
     <Router>
       <Routes>
         {/* Public Route */}
         <Route path="/login" element={<Login />} />
-        
+
+        {/* Redirect root to user-specific route if logged in */}
+        {user && (
+          <Route path="/" element={<Navigate to={`/user/${user.id}`} replace />} />
+        )}
+
         {/* Protected Routes */}
         <Route element={<ProtectedRoute />}>
-          <Route element={<MainLayout />}>
+          <Route path="/user/:userId" element={<MainLayout />}>
             <Route index element={<Sessions />} />
             <Route path="profile" element={<Profile />} />
             <Route path="time-table" element={<TimeTable />} />
             <Route path="students-lists" element={<StudentsLists />} />
             <Route path="export-page" element={<ExportPage />} />
             <Route path="edit-session" element={<EditSession />} />
-
-
-            {/* Nested routes inside sessions page */}
-           <Route path='sessions'>
-            <Route index element={<Sessions />} />
-             <Route path=':sessionId/attendance' element={<Attendance />} />
+            <Route path="sessions">
+              <Route index element={<Sessions />} />
+              <Route path=":sessionId/attendance" element={<Attendance />} />
             </Route>
-           </Route>
+            <Route path="edit-session">
+              <Route index element={<EditSession />} />
+              <Route path=":sessionId/justify" element={<Justify />} />
+            </Route>
+          </Route>
         </Route>
       </Routes>
     </Router>

@@ -1,7 +1,8 @@
+/* eslint-disable no-unused-vars */
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
-import { supabase } from '../../utils/Supabase';
+import { supabase } from '../../utils/supabase';
 import { 
   Users, Calendar, Clock, BookOpen, CheckCircle, 
   XCircle, ChevronRight, Filter, ChevronDown, ChevronUp, School
@@ -403,7 +404,7 @@ const EditSession = () => {
                                                           whileHover={{ scale: 1.02 }}
                                                           whileTap={{ scale: 0.98 }}
                                                           onClick={() => {
-                                                            navigate('/justified-students', {
+                                                            navigate(`/user/${user.teacherId}/edit-session/${session.sessionId}/justify`, {
                                                               state: {
                                                                 sessionId: session.sessionId,
                                                                 moduleName: session.Module?.moduleName,
