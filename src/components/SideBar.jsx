@@ -1,7 +1,7 @@
 /* eslint-disable no-unused-vars */
 import { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, Home, Users, LogOut } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Home, Table, User, LogOut } from 'lucide-react';
 import { supabase } from '../utils/Supabase';
 import { useAuth } from '../hooks/useAuth';
 
@@ -38,7 +38,8 @@ export default function Sidebar() {
 
   const navItems = [
     { to: '/', label: 'Sessions', icon: Home },
-    { to: '/users', label: 'TimeTable', icon: Users },
+    { to: '/time-table', label: 'TimeTable', icon: Table },
+    { to: '/profile', label: 'Profile', icon: User },
   ];
 
   return (
@@ -53,21 +54,21 @@ export default function Sidebar() {
 
       {/* Sidebar Container */}
       <div
-        className={`transition-all duration-300 ease-in-out ${
+        className={`transition-all duration-300 ease-in-out rounded-2xl ${
           open ? 'w-64 translate-x-0' : 'w-20 -translate-x-full md:translate-x-0'
         } bg-gradient-to-b from-[#006633] to-[#004d26] text-white h-screen flex flex-col border-r border-white/10 fixed md:relative z-30`}
       >
         {/* App Logo/Name */}
-        <div className="flex items-center justify-between px-5 py-6 border-b border-white/10">
+        <div className="flex items-center justify-between px-5 py-6 border-b border-white/10 rounded-t-2xl">
           {open ? (
             <div className="flex items-center gap-3">
-              <div className="w-9 h-9 bg-white rounded-xl flex items-center justify-center shadow-md">
+              <div className="w-9 h-9 bg-white rounded-2xl flex items-center justify-center shadow-md">
                 <span className="text-[#006633] font-bold text-lg">AE</span>
               </div>
               <h1 className="text-xl font-bold tracking-tight">AttendEase</h1>
             </div>
           ) : (
-            <div className="w-9 h-9 bg-white rounded-xl flex items-center justify-center mx-auto shadow-md">
+            <div className="w-9 h-9 bg-white rounded-2xl flex items-center justify-center mx-auto shadow-md">
               <span className="text-[#006633] font-bold text-lg">AE</span>
             </div>
           )}
@@ -92,7 +93,7 @@ export default function Sidebar() {
             <Link
               key={to}
               to={to}
-              className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 relative overflow-hidden group
+              className={`flex items-center gap-3 px-4 py-3 rounded-2xl transition-all duration-200 relative overflow-hidden group
                 ${
                   location.pathname === to
                     ? 'bg-white/15 backdrop-blur-sm shadow-inner'
@@ -135,12 +136,15 @@ export default function Sidebar() {
         </nav>
 
         {/* User Profile & Logout */}
-        <div className="mt-auto border-t border-white/10 pt-3 pb-5 px-3">
+        <div className="mt-auto border-t border-white/10 pt-3 pb-5 px-3 rounded-b-2xl">
           <div
-            className={`flex items-center gap-3 p-3 rounded-xl transition-all ${
+            className={`flex items-center gap-3 p-3 rounded-2xl transition-all ${
               !open ? 'justify-center' : 'hover:bg-white/10'
             } cursor-pointer`}
-            onClick={() => isMobile && setOpen(false)}
+            onClick={() => {
+              if (isMobile) setOpen(false);
+              navigate('/profile');
+            }}
           >
             <div className="w-9 h-9 rounded-full bg-white/25 flex items-center justify-center shadow-inner">
               <span className="text-sm font-medium text-white">
@@ -161,7 +165,10 @@ export default function Sidebar() {
               <button 
                 className="text-white/70 hover:text-white p-1 hover:bg-white/10 rounded-lg transition-colors"
                 aria-label="Logout"
-                onClick={handleLogout}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleLogout();
+                }}
                 title="Logout"
               >
                 <LogOut size={18} />
