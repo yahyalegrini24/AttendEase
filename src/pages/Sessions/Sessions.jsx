@@ -304,17 +304,17 @@ function Dashboard() {
                     </div>
                   </div>
 
-                  <div className="mt-3 sm:mt-4 flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-3">
-                    <button 
-                      onClick={() => handleStartAttendance(session)}
-                      className="px-3 sm:px-4 py-1.5 sm:py-2 bg-[#006633] text-white rounded-lg text-sm font-medium hover:bg-[#00502a] transition-colors"
-                    >
-                      Start Attendance
-                    </button>
-                    <button className="px-3 sm:px-4 py-1.5 sm:py-2 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors">
-                      View Students
-                    </button>
-                  </div>
+                  {/* Only show buttons for today's sessions */}
+                  {selectedDay === 'Today' && (
+                    <div className="mt-3 sm:mt-4 flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-3">
+                      <button 
+                        onClick={() => handleStartAttendance(session)}
+                        className="px-3 sm:px-4 py-1.5 sm:py-2 bg-[#006633] text-white rounded-lg text-sm font-medium hover:bg-[#00502a] transition-colors"
+                      >
+                        Start Attendance
+                      </button>
+                    </div>
+                  )}
                 </motion.div>
               )}
             </motion.div>

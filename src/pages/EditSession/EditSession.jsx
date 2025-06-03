@@ -1,5 +1,5 @@
 /* eslint-disable no-unused-vars */
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { supabase } from '../../utils/Supabase';
@@ -22,6 +22,54 @@ const EditSession = () => {
   const [expandedYears, setExpandedYears] = useState({});
   const [expandedSemesters, setExpandedSemesters] = useState({});
   const [expandedModules, setExpandedModules] = useState({});
+  // New state variables for academic year logic
+  const [academicYears, setAcademicYears] = useState([]);
+  const [currentAcademicYear, setCurrentAcademicYear] = useState(null);
+
+  // Fetch Academic Years
+  const fetchAcademicYears = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('AcademicYear')
+        .select('*')
+        .order('AcademicId', { ascending: true });
+
+      if (error) throw error;
+      setAcademicYears(data || []);
+    } catch (error) {
+      console.error("Error fetching academic years:", error);
+    }
+  };
+
+  // Determine current academic year based on current date and semester intervals
+  const determineCurrentAcademicYear = useCallback(() => {
+    const currentDate = new Date();
+    
+    const currentSemester = semesters.find(semester => {
+      if (!semester.StartDate || !semester.EndDate) return false;
+      
+      const startDate = new Date(semester.StartDate);
+      const endDate = new Date(semester.EndDate);
+      
+      return currentDate >= startDate && currentDate <= endDate;
+    });
+
+    if (currentSemester && currentSemester.AcademicId) {
+      const academicYear = academicYears.find(year => year.AcademicId === currentSemester.AcademicId);
+      setCurrentAcademicYear(academicYear);
+      return academicYear;
+    } else {
+      setCurrentAcademicYear(null);
+      return null;
+    }
+  }, [semesters, academicYears]);
+
+  // Call determineCurrentAcademicYear when semesters and academic years are loaded
+  useEffect(() => {
+    if (semesters.length > 0 && academicYears.length > 0) {
+      determineCurrentAcademicYear();
+    }
+  }, [semesters, academicYears, determineCurrentAcademicYear]);
 
   // Organize sessions by school year, semester, and module
   const organizeSessions = (sessions) => {
@@ -69,10 +117,15 @@ const EditSession = () => {
       setLoading(true);
       
       try {
-        // Fetch semesters first
+        // Fetch academic years if not already loaded
+        if (academicYears.length === 0) {
+          await fetchAcademicYears();
+        }
+
+        // Fetch semesters with academic year info
         const { data: semesterData, error: semesterError } = await supabase
           .from('Semestre')
-          .select('SemesterId, label')
+          .select('SemesterId, label, StartDate, EndDate, AcademicId')
           .order('StartDate', { ascending: false });
 
         if (semesterError) throw semesterError;
@@ -89,7 +142,7 @@ const EditSession = () => {
             Module:moduleId (
               moduleId,
               moduleName,
-              Semester:SemesterId (SemesterId, label)
+              Semester:SemesterId (SemesterId, label, AcademicId)
             ),
             Group:groupId (
               groupId,
@@ -125,7 +178,7 @@ const EditSession = () => {
     };
     
     fetchData();
-  }, [user]);
+  }, [user, academicYears]);
 
   useEffect(() => {
     if (sessions.length > 0) {
@@ -185,57 +238,85 @@ const EditSession = () => {
             <p className="text-gray-600 mt-1">View and manage your past sessions</p>
           </div>
           
-          <div className="relative w-full sm:w-auto">
-            <button
-              onClick={() => setShowSemesterFilter(!showSemesterFilter)}
-              className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-md hover:bg-gray-50 text-gray-700 w-full sm:w-auto justify-between sm:justify-start"
-            >
-              <div className="flex items-center gap-2">
-                <Filter size={18} />
-                {selectedSemester === 'All' 
-                  ? "All Semesters" 
-                  : semesters.find(s => s.SemesterId === selectedSemester)?.label || "Select Semester"}
+          <div className="flex items-center gap-4">
+            {/* Current Academic Year Display */}
+            {currentAcademicYear && (
+              <div className="hidden sm:flex items-center gap-2 bg-blue-50 border border-blue-200 px-3 py-1.5 rounded-lg">
+                <Calendar className="text-blue-600" size={18} />
+                <span className="text-sm font-medium text-blue-800">
+                  {currentAcademicYear.label}
+                </span>
               </div>
-              <ChevronDown size={16} className={`transition-transform ${showSemesterFilter ? 'rotate-180' : ''}`} />
-            </button>
+            )}
             
-            {showSemesterFilter && (
-              <div className="absolute right-0 sm:left-0 mt-2 w-full sm:w-56 bg-white rounded-md shadow-lg z-10 border border-gray-200">
-                <div className="py-1 max-h-60 overflow-y-auto">
-                  <button
-                    onClick={() => {
-                      setSelectedSemester('All');
-                      setShowSemesterFilter(false);
-                    }}
-                    className={`block w-full text-left px-4 py-2 text-sm ${
-                      selectedSemester === 'All' 
-                        ? 'bg-emerald-50 text-emerald-700' 
-                        : 'text-gray-700 hover:bg-gray-100'
-                    }`}
-                  >
-                    All Semesters
-                  </button>
-                  {semesters.map(semester => (
+            <div className="relative w-full sm:w-auto">
+              <button
+                onClick={() => setShowSemesterFilter(!showSemesterFilter)}
+                className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-md hover:bg-gray-50 text-gray-700 w-full sm:w-auto justify-between sm:justify-start"
+              >
+                <div className="flex items-center gap-2">
+                  <Filter size={18} />
+                  {selectedSemester === 'All' 
+                    ? "All Semesters" 
+                    : semesters.find(s => s.SemesterId === selectedSemester)?.label || "Select Semester"}
+                </div>
+                <ChevronDown size={16} className={`transition-transform ${showSemesterFilter ? 'rotate-180' : ''}`} />
+              </button>
+              
+              {showSemesterFilter && (
+                <div className="absolute right-0 sm:left-0 mt-2 w-full sm:w-56 bg-white rounded-md shadow-lg z-10 border border-gray-200">
+                  <div className="py-1 max-h-60 overflow-y-auto">
                     <button
-                      key={semester.SemesterId}
                       onClick={() => {
-                        setSelectedSemester(semester.SemesterId);
+                        setSelectedSemester('All');
                         setShowSemesterFilter(false);
                       }}
                       className={`block w-full text-left px-4 py-2 text-sm ${
-                        selectedSemester === semester.SemesterId 
+                        selectedSemester === 'All' 
                           ? 'bg-emerald-50 text-emerald-700' 
                           : 'text-gray-700 hover:bg-gray-100'
                       }`}
                     >
-                      {semester.label}
+                      All Semesters
                     </button>
-                  ))}
+                    {semesters
+                      .filter(semester => 
+                        !currentAcademicYear || semester.AcademicId === currentAcademicYear.AcademicId
+                      )
+                      .map(semester => (
+                        <button
+                          key={semester.SemesterId}
+                          onClick={() => {
+                            setSelectedSemester(semester.SemesterId);
+                            setShowSemesterFilter(false);
+                          }}
+                          className={`block w-full text-left px-4 py-2 text-sm ${
+                            selectedSemester === semester.SemesterId 
+                              ? 'bg-emerald-50 text-emerald-700' 
+                              : 'text-gray-700 hover:bg-gray-100'
+                          }`}
+                        >
+                          {semester.label}
+                        </button>
+                      ))}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
+
+        {/* Mobile Current Academic Year Display */}
+        {currentAcademicYear && (
+          <div className="sm:hidden mb-4 bg-blue-50 border border-blue-200 p-3 rounded-lg">
+            <div className="flex items-center gap-2">
+              <Calendar className="text-blue-600" size={18} />
+              <span className="text-sm font-medium text-blue-800">
+                Current Academic Year: {currentAcademicYear.label}
+              </span>
+            </div>
+          </div>
+        )}
 
         {loading ? (
           <div className="flex flex-col items-center justify-center py-16">

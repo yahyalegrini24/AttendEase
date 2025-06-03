@@ -19,13 +19,10 @@ export default function JustifyAbsences() {
       const { data, error } = await supabase
         .from('Attendance')
         .select(`
-          studentMatricule,
-          StudentGroup (
-            matricule,
-            Student (
-              firstName,
-              lastName
-            )
+          matricule,
+          Student (
+            firstName,
+            lastName
           )
         `)
         .eq('sessionId', sessionId)
@@ -49,19 +46,19 @@ export default function JustifyAbsences() {
     fetchAbsentees();
   }, [sessionId, navigate, fetchAbsentees]);
 
-  const handleJustify = async (studentMatricule) => {
-    setJustifying(studentMatricule);
+  const handleJustify = async (matricule) => {
+    setJustifying(matricule);
     try {
       const { error } = await supabase
         .from('Attendance')
         .update({ presence: 0.5 })
         .eq('sessionId', sessionId)
-        .eq('studentMatricule', studentMatricule);
+        .eq('matricule', matricule);
       
       if (!error) {
-        setAbsentees(prev => prev.filter(a => a.studentMatricule !== studentMatricule));
+        setAbsentees(prev => prev.filter(a => a.matricule !== matricule));
         setExpanded(null);
-        setShowConfirmation(studentMatricule);
+        setShowConfirmation(matricule);
         setTimeout(() => setShowConfirmation(null), 3000);
       }
     } catch (error) {
@@ -86,7 +83,6 @@ export default function JustifyAbsences() {
               <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">Group</p>
               <p className="font-medium text-gray-800">{groupName || 'Not specified'}</p>
             </div>
-
           </div>
         </div>
 
@@ -107,14 +103,14 @@ export default function JustifyAbsences() {
           ) : absentees.length > 0 ? (
             <ul className="divide-y divide-gray-200">
               {absentees.map((item) => {
-                const isExpanded = expanded === item.studentMatricule;
-                const studentName = `${item.StudentGroup?.Student?.firstName || ''} ${item.StudentGroup?.Student?.lastName || ''}`.trim();
+                const isExpanded = expanded === item.matricule;
+                const studentName = `${item.Student?.firstName || ''} ${item.Student?.lastName || ''}`.trim();
                 
                 return (
-                  <li key={item.studentMatricule} className="hover:bg-gray-50 transition-colors">
+                  <li key={item.matricule} className="hover:bg-gray-50 transition-colors">
                     <div 
                       className={`p-4 ${isExpanded ? 'bg-emerald-50' : ''}`}
-                      onClick={() => setExpanded(isExpanded ? null : item.studentMatricule)}
+                      onClick={() => setExpanded(isExpanded ? null : item.matricule)}
                     >
                       <div className="flex items-center justify-between cursor-pointer">
                         <div className="flex items-center space-x-3">
@@ -126,7 +122,7 @@ export default function JustifyAbsences() {
                               {studentName || 'Unknown Student'}
                             </p>
                             <p className="text-sm text-gray-500">
-                              Matricule: {item.studentMatricule}
+                              Matricule: {item.matricule}
                             </p>
                           </div>
                         </div>
@@ -148,16 +144,16 @@ export default function JustifyAbsences() {
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                handleJustify(item.studentMatricule);
+                                handleJustify(item.matricule);
                               }}
-                              disabled={justifying === item.studentMatricule}
+                              disabled={justifying === item.matricule}
                               className={`flex items-center justify-center space-x-2 w-full py-2 px-4 rounded-md ${
-                                justifying === item.studentMatricule
+                                justifying === item.matricule
                                   ? 'bg-emerald-500'
                                   : 'bg-emerald-600 hover:bg-emerald-700'
                               } text-white transition-colors`}
                             >
-                              {justifying === item.studentMatricule ? (
+                              {justifying === item.matricule ? (
                                 <>
                                   <Clock className="w-4 h-4" />
                                   <span>Processing...</span>

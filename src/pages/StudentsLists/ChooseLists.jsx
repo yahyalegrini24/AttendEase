@@ -12,7 +12,8 @@ import {
   RefreshCw,
   AlertCircle,
   CheckCircle2,
-  Filter
+  Filter,
+  Calendar
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -30,13 +31,105 @@ const GroupManagement = () => {
   const [semesters, setSemesters] = useState([]);
   const [selectedSemester, setSelectedSemester] = useState(null);
   const [showSemesterFilter, setShowSemesterFilter] = useState(false);
+  const [academicYears, setAcademicYears] = useState([]);
+  const [currentAcademicYear, setCurrentAcademicYear] = useState(null);
 
-  // Fetch all available semesters
+  // Helper function to extract academic year from path (e.g., "2425" from "Computer Science\2425\...")
+  const extractAcademicYearFromPath = useCallback((filePath) => {
+    if (!filePath) return null;
+    
+    // Look for 4-digit pattern (academic year) in the path
+    const academicYearMatch = filePath.match(/\\(\d{4})\\|\/(\d{4})\//);
+    return academicYearMatch ? academicYearMatch[1] || academicYearMatch[2] : null;
+  }, []);
+
+  // Check if group belongs to current academic year based on path
+  const isGroupInCurrentAcademicYear = useCallback((groupPath, currentAcademicYear) => {
+    if (!currentAcademicYear || !groupPath) return false;
+    
+    const pathAcademicYear = extractAcademicYearFromPath(groupPath);
+    if (!pathAcademicYear) return false;
+    
+    // Convert academic year label to the format used in paths
+    // Example: "2024-2025" -> "2425"
+    const academicYearLabel = currentAcademicYear.label;
+    let expectedPathYear = null;
+    
+    if (academicYearLabel.includes('-')) {
+      // Format like "2024-2025"
+      const years = academicYearLabel.split('-');
+      if (years.length === 2) {
+        expectedPathYear = years[0].slice(-2) + years[1].slice(-2); // "24" + "25" = "2425"
+      }
+    } else if (academicYearLabel.length === 4) {
+      // Format like "2425"
+      expectedPathYear = academicYearLabel;
+    }
+    
+    return pathAcademicYear === expectedPathYear;
+  }, [extractAcademicYearFromPath]);
+
+  // Fetch Academic Years
+  const fetchAcademicYears = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('AcademicYear')
+        .select('*')
+        .order('AcademicId', { ascending: true });
+
+      if (error) throw error;
+      setAcademicYears(data || []);
+    } catch (error) {
+      console.error("Error fetching academic years:", error);
+      setStatusMessage({ type: "error", text: "Failed to load academic years" });
+      setTimeout(() => setStatusMessage(null), 3000);
+    }
+  };
+
+  // Determine current academic year based on current date and semester intervals
+  const determineCurrentAcademicYear = useCallback(() => {
+    const currentDate = new Date();
+    
+    const currentSemester = semesters.find(semester => {
+      if (!semester.StartDate || !semester.EndDate) return false;
+      
+      const startDate = new Date(semester.StartDate);
+      const endDate = new Date(semester.EndDate);
+      
+      return currentDate >= startDate && currentDate <= endDate;
+    });
+
+    if (currentSemester && currentSemester.AcademicId) {
+      const academicYear = academicYears.find(year => year.AcademicId === currentSemester.AcademicId);
+      setCurrentAcademicYear(academicYear);
+      return academicYear;
+    } else {
+      setCurrentAcademicYear(null);
+      setStatusMessage({ type: "warning", text: "Academic year still doesn't start" });
+      setTimeout(() => setStatusMessage(null), 3000);
+      return null;
+    }
+  }, [semesters, academicYears]);
+
+  // Call determineCurrentAcademicYear when semesters and academic years are loaded
+  useEffect(() => {
+    if (semesters.length > 0 && academicYears.length > 0) {
+      determineCurrentAcademicYear();
+    }
+  }, [semesters, academicYears, determineCurrentAcademicYear]);
+
+  // Fetch all available semesters with Academic Year info
   const fetchSemesters = useCallback(async () => {
     try {
       const { data, error } = await supabase
         .from('Semestre')
-        .select('*')
+        .select(`
+          *,
+          AcademicYear:AcademicId (
+            AcademicId,
+            label
+          )
+        `)
         .order('StartDate', { ascending: false });
 
       if (error) throw error;
@@ -132,14 +225,21 @@ const GroupManagement = () => {
         .eq('Section.SchoolYear.branchId', user.branchId);
 
       if (error) throw error;
-      return data;
+      
+      // Filter groups based on current academic year in path
+      const filteredData = data.filter(group => {
+        if (!currentAcademicYear) return true; // Show all if no current academic year
+        return isGroupInCurrentAcademicYear(group.group_path, currentAcademicYear);
+      });
+      
+      return filteredData;
     } catch (error) {
       console.error("Error fetching all groups:", error);
       setStatusMessage({ type: "error", text: "Failed to load available groups" });
       setTimeout(() => setStatusMessage(null), 3000);
       return [];
     }
-  }, [user]);
+  }, [user, currentAcademicYear, isGroupInCurrentAcademicYear]);
 
   const buildDataStructure = useCallback((groups, assignedGroups) => {
     const degrees = {};
@@ -151,6 +251,11 @@ const GroupManagement = () => {
       const filePath = group.group_path;
       
       if (!degree || !schoolYear || !section) return;
+
+      // Additional check to ensure group belongs to current academic year
+      if (currentAcademicYear && !isGroupInCurrentAcademicYear(filePath, currentAcademicYear)) {
+        return; // Skip this group if it doesn't belong to current academic year
+      }
 
       if (!degrees[degree.degreeId]) {
         degrees[degree.degreeId] = {
@@ -208,7 +313,7 @@ const GroupManagement = () => {
     });
 
     return degrees;
-  }, [expandedItems]);
+  }, [expandedItems, currentAcademicYear, isGroupInCurrentAcademicYear]);
 
   const buildRenderData = useCallback((degrees) => {
     const renderData = [];
@@ -247,13 +352,20 @@ const GroupManagement = () => {
     try {
       setLoading(true);
       
-      const [teacherGroups, allGroups, semesterData] = await Promise.all([
-        fetchTeacherGroups(selectedSemester),
-        fetchAllGroups(),
-        fetchSemesters()
+      // First load academic years and semesters
+      const [semesterData] = await Promise.all([
+        fetchSemesters(),
+        academicYears.length === 0 ? fetchAcademicYears() : Promise.resolve()
       ]);
 
       setSemesters(semesterData);
+
+      // Then load groups after we have academic year info
+      const [teacherGroups, allGroups] = await Promise.all([
+        fetchTeacherGroups(selectedSemester),
+        fetchAllGroups()
+      ]);
+
       setAssignedGroups(teacherGroups);
       setChosenGroups(teacherGroups);
 
@@ -270,11 +382,11 @@ const GroupManagement = () => {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [user, fetchTeacherGroups, fetchAllGroups, buildDataStructure, buildRenderData, fetchSemesters, selectedSemester]);
+  }, [user, fetchTeacherGroups, fetchAllGroups, buildDataStructure, buildRenderData, fetchSemesters, selectedSemester, academicYears, currentAcademicYear]);
 
   useEffect(() => {
     loadData();
-  }, [loadData, selectedSemester]);
+  }, [loadData, selectedSemester, currentAcademicYear]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
@@ -390,6 +502,17 @@ const GroupManagement = () => {
       setTimeout(() => setStatusMessage(null), 3000);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const getMessageColor = (type) => {
+    switch (type) {
+      case 'error':
+        return 'bg-red-100 text-red-800';
+      case 'warning':
+        return 'bg-yellow-100 text-yellow-800';
+      default:
+        return 'bg-emerald-100 text-emerald-800';
     }
   };
 
@@ -516,11 +639,7 @@ const GroupManagement = () => {
               initial={{ opacity: 0, y: -20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
-              className={`fixed top-4 left-1/2 transform -translate-x-1/2 z-50 px-6 py-3 rounded-md shadow-lg flex items-center ${
-                statusMessage.type === "success" 
-                  ? "bg-emerald-100 text-emerald-800" 
-                  : "bg-red-100 text-red-800"
-              }`}
+              className={`fixed top-4 left-1/2 transform -translate-x-1/2 z-50 px-6 py-3 rounded-md shadow-lg flex items-center ${getMessageColor(statusMessage.type)}`}
             >
               {statusMessage.type === "success" ? (
                 <CheckCircle2 className="mr-2" size={18} />
@@ -564,7 +683,11 @@ const GroupManagement = () => {
                     >
                       All Semesters
                     </button>
-                    {semesters.map(semester => (
+                    {semesters
+                      .filter(semester => 
+                        !currentAcademicYear || semester.AcademicId === currentAcademicYear.AcademicId
+                      )
+                      .map(semester => (
                       <button
                         key={semester.SemesterId}
                         onClick={() => {
@@ -599,6 +722,18 @@ const GroupManagement = () => {
           </div>
         </div>
 
+        {/* Current Academic Year Display */}
+        {currentAcademicYear && (
+          <div className="mb-6 bg-blue-50 border border-blue-200 p-4 rounded-lg">
+            <div className="flex items-center gap-2">
+              <Calendar className="text-blue-600 w-5 h-5" />
+              <h2 className="text-lg font-semibold text-blue-800">
+                Current Academic Year: {currentAcademicYear.label}
+              </h2>
+            </div>
+          </div>
+        )}
+
         {loading ? (
           <div className="flex flex-col items-center justify-center py-16">
             <div className="animate-spin text-emerald-600 mb-4">
@@ -622,7 +757,9 @@ const GroupManagement = () => {
                   </div>
                 ) : (
                   <div className="text-center py-8 text-gray-500">
-                    No groups available
+                    {currentAcademicYear 
+                      ? `No groups available for academic year ${currentAcademicYear.label}` 
+                      : "No groups available"}
                   </div>
                 )}
               </div>

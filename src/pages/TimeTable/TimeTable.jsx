@@ -1,8 +1,7 @@
-
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import { supabase } from '../../utils/Supabase';
-import { ChevronDown, ChevronUp, Edit2, Trash2, Save, X } from 'lucide-react';
+import { ChevronDown, ChevronUp, Edit2, Trash2, Save, X, Filter, Calendar } from 'lucide-react';
 
 // Constants
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday'];
@@ -21,7 +20,8 @@ const CourseDetailsModal = ({
   onSave, 
   onClose,
   teacherId,
-  classrooms
+  classrooms,
+  selectedSemester
 }) => {
   const [details, setDetails] = useState({
     year: courseDetails.year || '',
@@ -38,7 +38,9 @@ const CourseDetailsModal = ({
     room: courseDetails.room || { roomNumber: '', location: 'Unknown Location', classId: '' },
     classroomId: courseDetails.classroomId || '',
     timeId: courseDetails.timeId || null,
-    timeLabel: courseDetails.timeLabel || ''
+    timeLabel: courseDetails.timeLabel || '',
+    sessionStructureId: courseDetails.sessionStructureId || generateAlphaId(),
+    dayId: DAYS.indexOf(day) + 1
   });
   const [teacherGroups, setTeacherGroups] = useState([]);
   const [modules, setModules] = useState([]);
@@ -122,7 +124,7 @@ const CourseDetailsModal = ({
 
   useEffect(() => {
     const fetchModules = async () => {
-      if (!details.groupId) return;
+      if (!details.groupId || !selectedSemester) return;
       
       setLoading(true);
       try {
@@ -132,7 +134,8 @@ const CourseDetailsModal = ({
           const { data: modulesData, error: modulesError } = await supabase
             .from('Module')
             .select('moduleId, moduleName')
-            .eq('yearId', selectedGroup.section.yearId);
+            .eq('yearId', selectedGroup.section.yearId)
+            .eq('SemesterId', selectedSemester);
         
           if (modulesError) throw modulesError;
           setModules(modulesData || []);
@@ -145,7 +148,7 @@ const CourseDetailsModal = ({
     };
 
     fetchModules();
-  }, [details.groupId, teacherGroups]);
+  }, [details.groupId, teacherGroups, selectedSemester]);
 
   const toggleSection = (section) => {
     setExpandedSections(prev => ({
@@ -172,7 +175,7 @@ const CourseDetailsModal = ({
     setExpandedSections(prev => ({ ...prev, module: false, type: true }));
   };
 
-  const handleSelect = (field, value, id) => {
+  const handleSelect = (field, value, id, extraData = {}) => {
     if (field === 'room') {
       const selectedClassroom = classrooms.find(c => c.classId === id);
       setDetails(prev => ({ 
@@ -188,7 +191,8 @@ const CourseDetailsModal = ({
       setDetails(prev => ({ 
         ...prev, 
         name: value,
-        moduleId: id
+        moduleId: id,
+        ...extraData
       }));
     } else if (field === 'time') {
       const selectedTime = timeSlots.find(t => t.TimeId === id);
@@ -220,7 +224,9 @@ const CourseDetailsModal = ({
   };
 
   const renderSelectionSection = (title, field, items, selectedValue) => {
-    const isDisabled = field === 'module' && !details.group;
+    const isDisabled = (field === 'module' && !details.group) || 
+                      (field === 'classroom' && !details.group) ||
+                      (field === 'type' && !details.group);
     return (
       <div className="mb-4 bg-white rounded-lg overflow-hidden shadow-sm">
         <button 
@@ -277,7 +283,7 @@ const CourseDetailsModal = ({
   const moduleOptions = modules.map(m => ({ 
     label: m.moduleName, 
     value: m.moduleName,
-    id: m.moduleId 
+    id: m.moduleId
   }));
   
   const classroomOptions = classrooms.map(r => ({ 
@@ -327,7 +333,7 @@ const CourseDetailsModal = ({
       classroomId: details.classroomId,
       timeId: details.timeId,
       timeLabel: selectedTime?.label || '',
-      sessionStructureId: courseDetails.sessionStructureId || generateAlphaId(),
+      sessionStructureId: details.sessionStructureId,
       dayId: DAYS.indexOf(day) + 1
     };
     
@@ -441,6 +447,53 @@ export default function TimeTable() {
     courseDetails: {}
   });
   const [timeSlots, setTimeSlots] = useState([]);
+  const [semesters, setSemesters] = useState([]);
+  const [selectedSemester, setSelectedSemester] = useState(null);
+  const [academicYears, setAcademicYears] = useState([]);
+  const [currentAcademicYear, setCurrentAcademicYear] = useState(null);
+
+  const fetchAcademicYears = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('AcademicYear')
+        .select('*')
+        .order('AcademicId', { ascending: true });
+
+      if (error) throw error;
+      setAcademicYears(data || []);
+    } catch (error) {
+      console.error("Error fetching academic years:", error);
+      alert('Failed to load academic years');
+    }
+  };
+
+  const determineCurrentAcademicYear = useCallback(() => {
+    const currentDate = new Date();
+    
+    const currentSemester = semesters.find(semester => {
+      if (!semester.StartDate || !semester.EndDate) return false;
+      
+      const startDate = new Date(semester.StartDate);
+      const endDate = new Date(semester.EndDate);
+      
+      return currentDate >= startDate && currentDate <= endDate;
+    });
+
+    if (currentSemester && currentSemester.AcademicId) {
+      const academicYear = academicYears.find(year => year.AcademicId === currentSemester.AcademicId);
+      setCurrentAcademicYear(academicYear);
+      return academicYear;
+    } else {
+      setCurrentAcademicYear(null);
+      return null;
+    }
+  }, [semesters, academicYears]);
+
+  useEffect(() => {
+    if (semesters.length > 0 && academicYears.length > 0) {
+      determineCurrentAcademicYear();
+    }
+  }, [semesters, academicYears, determineCurrentAcademicYear]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -448,7 +501,38 @@ export default function TimeTable() {
 
       setLoading(true);
       try {
-        // Fetch time slots
+        if (academicYears.length === 0) {
+          await fetchAcademicYears();
+        }
+
+        const { data: semestersData, error: semestersError } = await supabase
+          .from('Semestre')
+          .select('*, AcademicYear:AcademicId (AcademicId, label)')
+          .order('SemesterId', { ascending: true });
+
+        if (semestersError) throw semestersError;
+        setSemesters(semestersData || []);
+
+        // Set the initial selected semester to the current semester
+        if (semestersData && semestersData.length > 0) {
+          const currentSemester = semestersData.find(semester => {
+            if (!semester.StartDate || !semester.EndDate) return false;
+            
+            const startDate = new Date(semester.StartDate);
+            const endDate = new Date(semester.EndDate);
+            const currentDate = new Date();
+            
+            return currentDate >= startDate && currentDate <= endDate;
+          });
+
+          if (currentSemester) {
+            setSelectedSemester(currentSemester.SemesterId);
+          } else {
+            // If no current semester, select the first one
+            setSelectedSemester(semestersData[0].SemesterId);
+          }
+        }
+
         const { data: timeSlotsData, error: timeSlotsError } = await supabase
           .from('SessionTime')
           .select('*')
@@ -457,7 +541,30 @@ export default function TimeTable() {
         if (timeSlotsError) throw timeSlotsError;
         setTimeSlots(timeSlotsData || []);
 
-        // Fetch sessions data with proper joins
+        const { data: classroomsData, error: classroomsError } = await supabase
+          .from('Classroom')
+          .select('classId, ClassNumber, Location');
+        
+        if (classroomsError) throw classroomsError;
+        setClassrooms(classroomsData || []);
+
+      } catch (error) {
+        console.error('Error fetching initial data:', error);
+        alert('Failed to load initial data');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, [user, academicYears]);
+
+  useEffect(() => {
+    const fetchTimetableData = async () => {
+      if (!user?.teacherId || !selectedSemester) return;
+
+      setLoading(true);
+      try {
         const { data: sessionsData, error: sessionsError } = await supabase
           .from('Session_structure')
           .select(`
@@ -470,7 +577,7 @@ export default function TimeTable() {
             TimeId,
             Session_structure_id,
             Day:dayId (dayId, dayName),
-            Module:moduleId (moduleId, moduleName, SchoolYear:yearId (yearId, yearName, Degree:degreeId (degreeId, degreeName))),
+            Module:moduleId (moduleId, moduleName, SemesterId, SchoolYear:yearId (yearId, yearName, Degree:degreeId (degreeId, degreeName))),
             Group:groupId (
               groupId,
               groupName,
@@ -491,11 +598,11 @@ export default function TimeTable() {
             GroupType:typeId (typeId, typeName),
             SessionTime:TimeId (TimeId, label)
           `)
-          .eq('teacherId', user.teacherId);
+          .eq('teacherId', user.teacherId)
+          .eq('Module.SemesterId', selectedSemester);
 
         if (sessionsError) throw sessionsError;
 
-        // Format the data
         const formattedData = {};
         sessionsData?.forEach(session => {
           const dayName = session.Day?.dayName || '';
@@ -532,25 +639,16 @@ export default function TimeTable() {
         });
 
         setTimetableData(formattedData);
-
-        // Fetch classrooms
-        const { data: classroomsData, error: classroomsError } = await supabase
-          .from('Classroom')
-          .select('classId, ClassNumber, Location');
-        
-        if (classroomsError) throw classroomsError;
-        setClassrooms(classroomsData || []);
-
       } catch (error) {
-        console.error('Error fetching data:', error);
-        alert('Failed to load data');
+        console.error('Error fetching timetable data:', error);
+        alert('Failed to load timetable data');
       } finally {
         setLoading(false);
       }
     };
 
-    fetchData();
-  }, [user]);
+    fetchTimetableData();
+  }, [user, selectedSemester]);
 
   const toggleDay = (day) => {
     setExpandedDays(prev => ({
@@ -647,13 +745,11 @@ export default function TimeTable() {
         });
       });
 
-      // Delete existing sessions
       await supabase
         .from('Session_structure')
         .delete()
         .eq('teacherId', user.teacherId);
 
-      // Insert new sessions
       const { error } = await supabase
         .from('Session_structure')
         .insert(sessionsToUpsert);
@@ -673,24 +769,57 @@ export default function TimeTable() {
     <div className="max-w-7xl mx-auto px-4 py-8">
       <div className="flex justify-between items-center mb-8">
         <div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-gray-800"> TimeTable</h1>
-            <p className="text-gray-600 mt-1">Manage Your Daily Class Schedule </p>
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">TimeTable</h1>
+          <p className="text-gray-600 mt-1">Manage Your Daily Class Schedule</p>
+        </div>
+        <div className="flex items-center gap-4">
+          <div className="relative">
+            <div className="flex items-center gap-2 bg-white border border-gray-300 rounded-lg px-4 py-2">
+              <Filter size={18} className="text-gray-500" />
+              <select
+                value={selectedSemester || ''}
+                onChange={(e) => setSelectedSemester(Number(e.target.value))}
+                className="appearance-none bg-transparent pr-8 focus:outline-none"
+              >
+                {semesters
+                  .filter(semester => 
+                    !currentAcademicYear || semester.AcademicId === currentAcademicYear.AcademicId
+                  )
+                  .map(semester => (
+                    <option key={semester.SemesterId} value={semester.SemesterId}>
+                      {semester.label}
+                    </option>
+                  ))}
+              </select>
+            </div>
           </div>
-        <button
-          onClick={handleSaveTimetable}
-          disabled={loading}
-          className="flex items-center gap-2 px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-70"
-        >
-          {loading ? (
-            <span className="animate-spin">↻</span>
-          ) : (
-            <>
-              <Save size={18} />
-              Save Timetable
-            </>
-          )}
-        </button>
+          <button
+            onClick={handleSaveTimetable}
+            disabled={loading}
+            className="flex items-center gap-2 px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-70"
+          >
+            {loading ? (
+              <span className="animate-spin">↻</span>
+            ) : (
+              <>
+                <Save size={18} />
+                Save Timetable
+              </>
+            )}
+          </button>
+        </div>
       </div>
+
+      {currentAcademicYear && (
+        <div className="mb-6 bg-blue-50 border border-blue-200 p-4 rounded-lg">
+          <div className="flex items-center gap-2">
+            <Calendar className="text-blue-600 w-5 h-5" />
+            <h2 className="text-lg font-semibold text-blue-800">
+              Current Academic Year: {currentAcademicYear.label}
+            </h2>
+          </div>
+        </div>
+      )}
 
       <div className="space-y-6">
         {DAYS.map(day => (
@@ -785,6 +914,7 @@ export default function TimeTable() {
           onClose={() => setModalOpen(false)}
           teacherId={user?.teacherId}
           classrooms={classrooms}
+          selectedSemester={selectedSemester}
         />
       )}
     </div>

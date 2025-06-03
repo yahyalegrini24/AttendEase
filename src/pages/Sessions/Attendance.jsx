@@ -1,5 +1,5 @@
 /* eslint-disable no-unused-vars */
-import React, { useState, useEffect, useContext, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { supabase } from '../../utils/Supabase';
 import { useAuth } from '../../hooks/useAuth';
@@ -21,10 +21,75 @@ export default function Attendance() {
   const [markedStudents, setMarkedStudents] = useState({});
   const [studentsList, setStudentsList] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [hasScrolledAll, setHasScrolledAll] = useState(false);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
-  const [cancelTimer, setCancelTimer] = useState(5);
+  const [allAttendanceMarked, setAllAttendanceMarked] = useState(false);
   const timerRef = useRef(null);
+
+  // Cleanup function to delete session and attendance
+  const cleanupSession = async () => {
+    try {
+      // Delete attendance records first (foreign key constraint)
+      const { error: attendanceError } = await supabase
+        .from('Attendance')
+        .delete()
+        .eq('sessionId', sessionId);
+
+      if (attendanceError) throw attendanceError;
+
+      // Then delete the session
+      const { error: sessionError } = await supabase
+        .from('Session')
+        .delete()
+        .eq('sessionId', sessionId);
+
+      if (sessionError) throw sessionError;
+
+      console.log('Session and attendance records cleaned up');
+    } catch (error) {
+      console.error('Error during cleanup:', error);
+    }
+  };
+
+  // Check if all attendance is marked in database
+  useEffect(() => {
+    const checkAllAttendanceMarked = async () => {
+      if (!sessionId || studentsList.length === 0) return;
+      
+      try {
+        const { count, error } = await supabase
+          .from('Attendance')
+          .select('*', { count: 'exact' })
+          .eq('sessionId', sessionId);
+
+        if (error) throw error;
+
+        setAllAttendanceMarked(count === studentsList.length);
+      } catch (error) {
+        console.error('Error checking attendance records:', error);
+      }
+    };
+
+    checkAllAttendanceMarked();
+  }, [sessionId, studentsList, markedStudents]);
+
+  // Handle cleanup on component unmount or page refresh
+  useEffect(() => {
+    const handleBeforeUnload = async (e) => {
+      if (!allAttendanceMarked) {
+        e.preventDefault();
+        await cleanupSession();
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+    };
+  }, [allAttendanceMarked, sessionId]);
 
   // Fetch students for the group
   useEffect(() => {
@@ -73,15 +138,15 @@ export default function Attendance() {
       try {
         const { data, error } = await supabase
           .from('Attendance')
-          .select('studentMatricule, presence')
+          .select('matricule, presence')
           .eq('sessionId', sessionId)
-          .in('studentMatricule', studentsList.map(s => s.matricule));
+          .in('matricule', studentsList.map(s => s.matricule));
 
         if (error) throw error;
 
         const existingMarks = {};
         data.forEach(record => {
-          existingMarks[record.studentMatricule] = {
+          existingMarks[record.matricule] = {
             status: record.presence === 1.0 ? 'present' : 'absent'
           };
         });
@@ -96,16 +161,14 @@ export default function Attendance() {
   }, [sessionId, studentsList]);
 
   // Save attendance to database
-  const saveAttendance = async (studentMatricule, isPresent) => {
+  const saveAttendance = async (matricule, isPresent) => {
     try {
       const { error } = await supabase
         .from('Attendance')
-        .upsert({
-          studentMatricule: studentMatricule,
+        .insert({
+          matricule: matricule,
           sessionId: sessionId,
           presence: isPresent ? 1.0 : 0.0,
-        }, {
-          ignoreDuplicates: false
         });
 
       if (error) throw error;
@@ -156,9 +219,6 @@ export default function Attendance() {
     if (currentIndex < studentsList.length - 1) {
       setCurrentIndex(currentIndex + 1);
     }
-    if (currentIndex + 1 === studentsList.length - 1) {
-      setHasScrolledAll(true);
-    }
   };
 
   const goPrevious = () => {
@@ -182,6 +242,18 @@ export default function Attendance() {
     } catch (error) {
       console.error('Error confirming session:', error);
       alert('Failed to complete session');
+    }
+  };
+
+  // Exit session with cleanup
+  const exitSession = async () => {
+    setShowExitConfirm(false);
+    try {
+      await cleanupSession();
+      navigate(`/user/${user.teacherId}/`);
+    } catch (error) {
+      console.error('Error during session exit:', error);
+      alert('Failed to properly exit session');
     }
   };
 
@@ -365,8 +437,8 @@ export default function Attendance() {
           </button>
         </div>
 
-        {/* Finish Session Button */}
-        {hasScrolledAll && (
+        {/* Finish Session Button - Only shows when all attendance is marked in DB */}
+        {allAttendanceMarked && (
           <button
             onClick={finishSession}
             className="w-full bg-[#006633] text-white py-3 px-4 rounded-lg font-medium hover:bg-[#005a2d] transition-colors shadow-md flex items-center justify-center"
@@ -393,7 +465,8 @@ export default function Attendance() {
           <div className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full">
             <h3 className="text-lg font-bold text-gray-900 mb-2">Exit Attendance?</h3>
             <p className="text-gray-600 mb-4">
-              Are you sure you want to cancel this session? Any unsaved changes will be lost.
+              This will cancel the current session and delete all attendance records.
+              Are you sure you want to continue?
             </p>
             
             <div className="flex justify-end space-x-3">
@@ -404,7 +477,7 @@ export default function Attendance() {
                 Continue Session
               </button>
               <button
-                onClick={() => navigate(`/user/${user.teacherId}/`)}
+                onClick={exitSession}
                 className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
               >
                 Cancel Session

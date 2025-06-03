@@ -4,20 +4,84 @@ import { supabase } from '../../utils/Supabase';
 import { useAuth } from '../../hooks/useAuth';
 import { Download, Users, BookOpen, Calendar, School, Filter, ChevronDown, ChevronRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import * as XLSX from 'xlsx';
 
 const ExportPage = () => {
   const { user } = useAuth();
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [downloadingSession, setDownloadingSession] = useState(null);
   const [selectedSemester, setSelectedSemester] = useState('All');
   const [showSemesterFilter, setShowSemesterFilter] = useState(false);
   const [expandedYears, setExpandedYears] = useState({});
   const [expandedSemesters, setExpandedSemesters] = useState({});
+  const [academicYears, setAcademicYears] = useState([]);
+  const [currentAcademicYear, setCurrentAcademicYear] = useState(null);
+  const [semesters, setSemesters] = useState([]);
+
+  // Fetch Academic Years
+  const fetchAcademicYears = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('AcademicYear')
+        .select('*')
+        .order('AcademicId', { ascending: true });
+
+      if (error) throw error;
+      setAcademicYears(data || []);
+    } catch (error) {
+      console.error("Error fetching academic years:", error);
+    }
+  };
+
+  // Fetch all semesters with academic year info
+  const fetchSemesters = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('Semestre')
+        .select('SemesterId, label, StartDate, EndDate, AcademicId')
+        .order('StartDate', { ascending: false });
+
+      if (error) throw error;
+      setSemesters(data || []);
+    } catch (error) {
+      console.error("Error fetching semesters:", error);
+    }
+  };
+
+  // Determine current academic year based on current date and semester intervals
+  const determineCurrentAcademicYear = useCallback(() => {
+    const currentDate = new Date();
+    
+    const currentSemester = semesters.find(semester => {
+      if (!semester.StartDate || !semester.EndDate) return false;
+      
+      const startDate = new Date(semester.StartDate);
+      const endDate = new Date(semester.EndDate);
+      
+      return currentDate >= startDate && currentDate <= endDate;
+    });
+
+    if (currentSemester && currentSemester.AcademicId) {
+      const academicYear = academicYears.find(year => year.AcademicId === currentSemester.AcademicId);
+      setCurrentAcademicYear(academicYear);
+      return academicYear;
+    } else {
+      setCurrentAcademicYear(null);
+      return null;
+    }
+  }, [semesters, academicYears]);
+
+  useEffect(() => {
+    if (semesters.length > 0 && academicYears.length > 0) {
+      determineCurrentAcademicYear();
+    }
+  }, [semesters, academicYears, determineCurrentAcademicYear]);
 
   // Organize sessions by year and semester
   const organizedSessions = sessions.reduce((acc, session) => {
     const year = session.yearName || 'Unknown Year';
-    const semester = `Semester ${session.semester}`;
+    const semester = session.semesterLabel || `Semester ${session.semester}`;
     
     if (!acc[year]) {
       acc[year] = {};
@@ -36,7 +100,7 @@ const ExportPage = () => {
     acc[year] = {};
     
     Object.entries(semesters).forEach(([semester, sessions]) => {
-      if (selectedSemester === 'All' || semester === `Semester ${selectedSemester}`) {
+      if (selectedSemester === 'All' || semester.includes(selectedSemester)) {
         acc[year][semester] = sessions;
       }
     });
@@ -53,10 +117,16 @@ const ExportPage = () => {
         .select(`
           moduleId,
           groupId,
+          typeId,
           Module:moduleId (
             moduleId,
             moduleName,
             SemesterId,
+            Semestre:SemesterId (
+              SemesterId,
+              label,
+              AcademicId
+            ),
             SchoolYear:yearId (
               yearId,
               yearName
@@ -81,19 +151,36 @@ const ExportPage = () => {
           )
         `)
         .eq('teacherId', user.teacherId);
+      
       if (error) throw error;
 
-      return data.map(session => ({
-        sessionId: session.Session_structure_id,
+      // Create a map to track unique sessions by groupId, moduleId, typeId, and semester
+      const uniqueSessionsMap = new Map();
+
+      data.forEach(session => {
+        const key = `${session.moduleId}-${session.groupId}-${session.typeId}-${session.Module?.SemesterId}`;
+        
+        if (!uniqueSessionsMap.has(key)) {
+          uniqueSessionsMap.set(key, session);
+        }
+      });
+
+      // Convert the map values back to an array
+      const uniqueSessions = Array.from(uniqueSessionsMap.values());
+
+      return uniqueSessions.map(session => ({
+        sessionId: `${session.moduleId}-${session.groupId}-${session.typeId}`,
         moduleId: session.moduleId,
         moduleName: session.Module?.moduleName || "Unknown Module",
         semester: session.Module?.SemesterId || "1",
+        semesterLabel: session.Module?.Semestre?.label || `Semester ${session.Module?.SemesterId || "1"}`,
         yearName: session.Module?.SchoolYear?.yearName || "Unknown Year",
         groupId: session.groupId,
         groupName: session.Group?.groupName || "Unknown Group",
         filePath: session.Group?.group_path,
         degreeName: session.Group?.Section?.SchoolYear?.Degree?.degreeName || "Unknown Degree",
-        sectionName: session.Group?.Section?.sectionName || "Unknown Section"
+        sectionName: session.Group?.Section?.sectionName || "Unknown Section",
+        academicYearId: session.Module?.Semestre?.AcademicId || null
       }));
     } catch (error) {
       console.error("Error fetching teacher sessions:", error);
@@ -109,6 +196,7 @@ const ExportPage = () => {
 
     try {
       setLoading(true);
+      await Promise.all([fetchAcademicYears(), fetchSemesters()]);
       const sessions = await fetchTeacherSessions();
       setSessions(sessions);
     } catch (err) {
@@ -136,19 +224,131 @@ const ExportPage = () => {
     }));
   };
 
-  const handleDownload = (session) => {
-    console.log("Downloading materials for:", session.moduleName, session.groupName);
-    const confirmDownload = window.confirm(
-      `Download materials for ${session.moduleName} - ${session.groupName}?`
-    );
+  const handleDownload = async (session) => {
+    console.log("Preparing to download materials for:", session.moduleName, session.groupName);
     
-    if (confirmDownload) {
-      initiateDownload(session);
+    if (!session.filePath) {
+      alert("No file path available for this session");
+      return;
+    }
+    
+    try {
+      setDownloadingSession(session.sessionId);
+      
+      const { data: sessionsData, error: sessionsError } = await supabase
+        .from('Session')
+        .select('sessionId, sessionNumber, date, TypeId')
+        .eq('moduleId', session.moduleId)
+        .eq('groupId', session.groupId)
+        .order('date', { ascending: true });
+      
+      if (sessionsError) throw sessionsError;
+      
+      if (!sessionsData || sessionsData.length === 0) {
+        throw new Error("No sessions found for this module and group");
+      }
+      
+      console.log(`Found ${sessionsData.length} sessions for ${session.moduleName} - ${session.groupName}`);
+      
+      const sessionsWithAttendance = await Promise.all(
+        sessionsData.map(async (sess) => {
+          const { data: attendanceData, error: attendanceError } = await supabase
+            .from('Attendance')
+            .select('matricule, presence')
+            .eq('sessionId', sess.sessionId);
+          
+          if (attendanceError) throw attendanceError;
+          
+          return {
+            ...sess,
+            attendance: attendanceData || []
+          };
+        })
+      );
+      
+      const attendanceData = {
+        sessions: sessionsWithAttendance,
+        moduleName: session.moduleName,
+        groupName: session.groupName,
+        filePath: session.filePath
+      };
+      
+      await initiateDownload(attendanceData);
+      
+    } catch (error) {
+      console.error("Error preparing download:", error);
+      alert(`Error preparing download: ${error.message}`);
+    } finally {
+      setDownloadingSession(null);
     }
   };
 
-  const initiateDownload = async (session) => {
-    console.log("Download successful");
+  const initiateDownload = async (attendanceData) => {
+    try {
+      const response = await fetch(
+        `http://localhost:3000/download/${attendanceData.groupName}?groupPath=${encodeURIComponent(attendanceData.filePath)}`
+      );
+      
+      if (!response.ok) {
+        throw new Error(`Failed to download file: ${response.statusText}`);
+      }
+      
+      const blob = await response.blob();
+      const arrayBuffer = await blob.arrayBuffer();
+      
+      const workbook = XLSX.read(arrayBuffer);
+      const firstSheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[firstSheetName];
+      
+      const jsonData = XLSX.utils.sheet_to_json(worksheet);
+      
+      const enhancedData = jsonData.map(student => {
+        const enhancedStudent = { ...student };
+        
+        attendanceData.sessions.forEach((session, index) => {
+          const attendance = session.attendance.find(a => a.matricule === student.Matricule);
+          enhancedStudent[`Session ${index + 1}`] = attendance ? attendance.presence : 0;
+        });
+        
+        const note = Object.keys(enhancedStudent)
+          .filter(key => key.startsWith('Session '))
+          .reduce((sum, key) => sum + (enhancedStudent[key] || 0), 0);
+        
+        enhancedStudent.Note = note;
+        
+        return enhancedStudent;
+      });
+      
+      const newWorksheet = XLSX.utils.json_to_sheet(enhancedData);
+      workbook.Sheets[firstSheetName] = newWorksheet;
+      
+      const excelBuffer = XLSX.write(workbook, { 
+        bookType: 'xlsx', 
+        type: 'array' 
+      });
+      
+      const newBlob = new Blob([excelBuffer], { 
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+      });
+      
+      const url = URL.createObjectURL(newBlob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${attendanceData.moduleName}_${attendanceData.groupName}_attendance.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      
+      setTimeout(() => {
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+      }, 100);
+      
+      console.log("Enhanced Excel file downloaded successfully");
+      
+    } catch (error) {
+      console.error("Download failed:", error);
+      alert(`Download failed: ${error.message}`);
+    }
   };
 
   return (
@@ -157,70 +357,86 @@ const ExportPage = () => {
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
           <div>
             <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">Course Materials Export</h1>
-            <p className="text-gray-600 mt-1">Download teaching materials for your sessions</p>
+            <p className="text-gray-600 mt-1">Download Group Lists with Notes</p> 
           </div>
           
-          <div className="relative w-full sm:w-auto">
-            <button
-              onClick={() => setShowSemesterFilter(!showSemesterFilter)}
-              className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-md hover:bg-gray-50 text-gray-700 w-full sm:w-auto justify-between sm:justify-start"
-            >
-              <div className="flex items-center gap-2">
-                <Filter size={18} />
-                {selectedSemester === 'All' 
-                  ? "All Semesters" 
-                  : `Semester ${selectedSemester}`}
-              </div>
-              <ChevronDown size={16} className={`transition-transform ${showSemesterFilter ? 'rotate-180' : ''}`} />
-            </button>
-            
-            {showSemesterFilter && (
-              <div className="absolute right-0 sm:left-0 mt-2 w-full sm:w-56 bg-white rounded-md shadow-lg z-10 border border-gray-200">
-                <div className="py-1 max-h-60 overflow-y-auto">
-                  <button
-                    onClick={() => {
-                      setSelectedSemester('All');
-                      setShowSemesterFilter(false);
-                    }}
-                    className={`block w-full text-left px-4 py-2 text-sm ${
-                      selectedSemester === 'All' 
-                        ? 'bg-emerald-50 text-emerald-700' 
-                        : 'text-gray-700 hover:bg-gray-100'
-                    }`}
-                  >
-                    All Semesters
-                  </button>
-                  <button
-                    onClick={() => {
-                      setSelectedSemester('1');
-                      setShowSemesterFilter(false);
-                    }}
-                    className={`block w-full text-left px-4 py-2 text-sm ${
-                      selectedSemester === '1' 
-                        ? 'bg-emerald-50 text-emerald-700' 
-                        : 'text-gray-700 hover:bg-gray-100'
-                    }`}
-                  >
-                    Semester 1
-                  </button>
-                  <button
-                    onClick={() => {
-                      setSelectedSemester('2');
-                      setShowSemesterFilter(false);
-                    }}
-                    className={`block w-full text-left px-4 py-2 text-sm ${
-                      selectedSemester === '2' 
-                        ? 'bg-emerald-50 text-emerald-700' 
-                        : 'text-gray-700 hover:bg-gray-100'
-                    }`}
-                  >
-                    Semester 2
-                  </button>
-                </div>
+          <div className="flex items-center gap-4">
+            {currentAcademicYear && (
+              <div className="hidden sm:flex items-center gap-2 bg-blue-50 border border-blue-200 px-3 py-1.5 rounded-lg">
+                <Calendar className="text-blue-600" size={18} />
+                <span className="text-sm font-medium text-blue-800">
+                  {currentAcademicYear.label}
+                </span>
               </div>
             )}
+            
+            <div className="relative w-full sm:w-auto">
+              <button
+                onClick={() => setShowSemesterFilter(!showSemesterFilter)}
+                className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-md hover:bg-gray-50 text-gray-700 w-full sm:w-auto justify-between sm:justify-start"
+              >
+                <div className="flex items-center gap-2">
+                  <Filter size={18} />
+                  {selectedSemester === 'All' 
+                    ? "All Semesters" 
+                    : semesters.find(s => s.SemesterId === selectedSemester)?.label || "Select Semester"}
+                </div>
+                <ChevronDown size={16} className={`transition-transform ${showSemesterFilter ? 'rotate-180' : ''}`} />
+              </button>
+              
+              {showSemesterFilter && (
+                <div className="absolute right-0 sm:left-0 mt-2 w-full sm:w-56 bg-white rounded-md shadow-lg z-10 border border-gray-200">
+                  <div className="py-1 max-h-60 overflow-y-auto">
+                    <button
+                      onClick={() => {
+                        setSelectedSemester('All');
+                        setShowSemesterFilter(false);
+                      }}
+                      className={`block w-full text-left px-4 py-2 text-sm ${
+                        selectedSemester === 'All' 
+                          ? 'bg-emerald-50 text-emerald-700' 
+                          : 'text-gray-700 hover:bg-gray-100'
+                      }`}
+                    >
+                      All Semesters
+                    </button>
+                    {semesters
+                      .filter(semester => 
+                        !currentAcademicYear || semester.AcademicId === currentAcademicYear.AcademicId
+                      )
+                      .map(semester => (
+                        <button
+                          key={semester.SemesterId}
+                          onClick={() => {
+                            setSelectedSemester(semester.SemesterId);
+                            setShowSemesterFilter(false);
+                          }}
+                          className={`block w-full text-left px-4 py-2 text-sm ${
+                            selectedSemester === semester.SemesterId 
+                              ? 'bg-emerald-50 text-emerald-700' 
+                              : 'text-gray-700 hover:bg-gray-100'
+                          }`}
+                        >
+                          {semester.label}
+                        </button>
+                      ))}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
+
+        {currentAcademicYear && (
+          <div className="sm:hidden mb-4 bg-blue-50 border border-blue-200 p-3 rounded-lg">
+            <div className="flex items-center gap-2">
+              <Calendar className="text-blue-600" size={18} />
+              <span className="text-sm font-medium text-blue-800">
+                Current Academic Year: {currentAcademicYear.label}
+              </span>
+            </div>
+          </div>
+        )}
 
         {loading ? (
           <div className="flex flex-col items-center justify-center py-16">
@@ -283,41 +499,69 @@ const ExportPage = () => {
                                   className="overflow-hidden"
                                 >
                                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-4 pl-12">
-                                    {sessions.map((session) => (
-                                      <motion.div
-                                        key={`${session.moduleId}-${session.groupId}`}
-                                        initial={{ opacity: 0, y: 10 }}
-                                        animate={{ opacity: 1, y: 0 }}
-                                        whileHover={{ y: -2 }}
-                                        className="bg-gray-50 rounded-lg p-4 border border-gray-200"
-                                      >
-                                        <div className="mb-3">
-                                          <h4 className="font-semibold text-emerald-700">{session.moduleName}</h4>
-                                          <p className="text-sm text-gray-500">{session.groupName}</p>
-                                        </div>
-                                        
-                                        <div className="space-y-1 mb-4">
-                                          <div className="flex items-center gap-2">
-                                            <School className="text-emerald-600" size={14} />
-                                            <span className="text-xs text-gray-600">{session.degreeName}</span>
-                                          </div>
-                                          <div className="flex items-center gap-2">
-                                            <BookOpen className="text-emerald-600" size={14} />
-                                            <span className="text-xs text-gray-600">{session.sectionName}</span>
-                                          </div>
-                                        </div>
-                                        
-                                        <motion.button
-                                          whileHover={{ scale: 1.02 }}
-                                          whileTap={{ scale: 0.98 }}
-                                          onClick={() => handleDownload(session)}
-                                          className="w-full flex items-center justify-center gap-2 bg-emerald-600 text-white py-1 px-3 rounded-md hover:bg-emerald-700 transition-colors text-sm"
+                                    {sessions.map((session) => {
+                                      const isDownloading = downloadingSession === session.sessionId;
+                                      
+                                      return (
+                                        <motion.div
+                                          key={session.sessionId}
+                                          initial={{ opacity: 0, y: 10 }}
+                                          animate={{ opacity: 1, y: 0 }}
+                                          whileHover={{ y: -2 }}
+                                          className="bg-gray-50 rounded-lg p-4 border border-gray-200"
                                         >
-                                          <Download size={14} />
-                                          <span>Download</span>
-                                        </motion.button>
-                                      </motion.div>
-                                    ))}
+                                          <div className="mb-3">
+                                            <h4 className="font-semibold text-emerald-700">{session.moduleName}</h4>
+                                            <p className="text-sm text-gray-500">{session.groupName}</p>
+                                          </div>
+                                          
+                                          <div className="space-y-1 mb-4">
+                                            <div className="flex items-center gap-2">
+                                              <School className="text-emerald-600" size={14} />
+                                              <span className="text-xs text-gray-600">{session.degreeName}</span>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                              <BookOpen className="text-emerald-600" size={14} />
+                                              <span className="text-xs text-gray-600">{session.sectionName}</span>
+                                            </div>
+                                            {session.filePath && (
+                                              <div className="flex items-center gap-2">
+                                                <Download className="text-emerald-600" size={14} />
+                                                <span className="text-xs text-gray-600 truncate" title={session.filePath}>
+                                                  {session.filePath.split('/').pop() || 'File available'}
+                                                </span>
+                                              </div>
+                                            )}
+                                          </div>
+                                          
+                                          <motion.button
+                                            whileHover={{ scale: 1.02 }}
+                                            whileTap={{ scale: 0.98 }}
+                                            onClick={() => handleDownload(session)}
+                                            disabled={isDownloading || !session.filePath}
+                                            className={`w-full flex items-center justify-center gap-2 py-1 px-3 rounded-md transition-colors text-sm ${
+                                              !session.filePath
+                                                ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                                : isDownloading
+                                                ? 'bg-emerald-400 text-white cursor-wait'
+                                                : 'bg-emerald-600 text-white hover:bg-emerald-700'
+                                            }`}
+                                          >
+                                            {isDownloading ? (
+                                              <>
+                                                <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white"></div>
+                                                <span>Downloading...</span>
+                                              </>
+                                            ) : (
+                                              <>
+                                                <Download size={14} />
+                                                <span>{session.filePath ? 'Download' : 'No File'}</span>
+                                              </>
+                                            )}
+                                          </motion.button>
+                                        </motion.div>
+                                      );
+                                    })}
                                   </div>
                                 </motion.div>
                               )}
