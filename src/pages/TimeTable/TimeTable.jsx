@@ -21,7 +21,8 @@ const CourseDetailsModal = ({
   onClose,
   teacherId,
   classrooms,
-  selectedSemester
+  selectedSemester,
+  teacherBranchId // <-- Pass this prop from parent
 }) => {
   const [details, setDetails] = useState({
     year: courseDetails.year || '',
@@ -56,8 +57,8 @@ const CourseDetailsModal = ({
 
   useEffect(() => {
     const fetchData = async () => {
-      if (!teacherId) return;
-      
+      if (!teacherId || !selectedSemester) return;
+
       setLoading(true);
       try {
         // Fetch time slots
@@ -69,11 +70,12 @@ const CourseDetailsModal = ({
         if (timeSlotsError) throw timeSlotsError;
         setTimeSlots(timeSlotsData || []);
 
-        // Fetch teacher's groups
+        // Fetch teacher's groups for the current semester
         const { data: teacherGroupsData, error: teacherGroupsError } = await supabase
           .from('Teacher_group')
           .select('groupId')
-          .eq('teacherId', teacherId);
+          .eq('teacherId', teacherId)
+          .eq('semestreId', selectedSemester);
 
         if (teacherGroupsError) throw teacherGroupsError;
 
@@ -87,7 +89,8 @@ const CourseDetailsModal = ({
 
         if (teacherGroupsData && teacherGroupsData.length > 0) {
           const groupIds = teacherGroupsData.map(tg => tg.groupId);
-          
+
+          // Fetch groups with section, year, and branch info
           const { data: groupsData, error: groupsError } = await supabase
             .from('Group')
             .select(`
@@ -102,14 +105,21 @@ const CourseDetailsModal = ({
                   yearId,
                   yearName,
                   degreeId,
+                  branchId,
                   degree:Degree(degreeName)
                 )
               )
             `)
             .in('groupId', groupIds);
-           
+
           if (groupsError) throw groupsError;
-          setTeacherGroups(groupsData || []);
+
+          // Filter groups to only those whose year.branchId matches teacherBranchId
+          const filteredGroups = groupsData.filter(group =>
+            group.section?.year?.branchId === teacherBranchId
+          );
+
+          setTeacherGroups(filteredGroups || []);
         }
       } catch (error) {
         console.error('Error fetching data:', error);
@@ -120,23 +130,24 @@ const CourseDetailsModal = ({
     };
 
     fetchData();
-  }, [teacherId]);
+  }, [teacherId, selectedSemester, teacherBranchId]);
 
   useEffect(() => {
     const fetchModules = async () => {
       if (!details.groupId || !selectedSemester) return;
-      
+
       setLoading(true);
       try {
         const selectedGroup = teacherGroups.find(g => g.groupId === details.groupId);
-        
+
         if (selectedGroup && selectedGroup.section?.yearId) {
+          // Only fetch modules for the selected semester and the group's year
           const { data: modulesData, error: modulesError } = await supabase
             .from('Module')
-            .select('moduleId, moduleName')
+            .select('moduleId, moduleName, yearId')
             .eq('yearId', selectedGroup.section.yearId)
             .eq('SemesterId', selectedSemester);
-        
+
           if (modulesError) throw modulesError;
           setModules(modulesData || []);
         }
@@ -491,7 +502,17 @@ export default function TimeTable() {
 
   useEffect(() => {
     if (semesters.length > 0 && academicYears.length > 0) {
-      determineCurrentAcademicYear();
+      const academicYear = determineCurrentAcademicYear();
+      if (academicYear) {
+        const currentSemester = semesters.find(
+          s => s.AcademicId === academicYear.AcademicId &&
+               new Date() >= new Date(s.StartDate) &&
+               new Date() <= new Date(s.EndDate)
+        );
+        if (currentSemester) {
+          setSelectedSemester(currentSemester.SemesterId);
+        }
+      }
     }
   }, [semesters, academicYears, determineCurrentAcademicYear]);
 
@@ -605,37 +626,40 @@ export default function TimeTable() {
 
         const formattedData = {};
         sessionsData?.forEach(session => {
-          const dayName = session.Day?.dayName || '';
-          const timeSlot = session.SessionTime?.label || '';
-          const timeId = session.TimeId || null;
-          
-          if (!formattedData[dayName]) {
-            formattedData[dayName] = {};
-          }
+          // Only process sessions that have a module in the selected semester
+          if (session.Module?.SemesterId === selectedSemester) {
+            const dayName = session.Day?.dayName || '';
+            const timeSlot = session.SessionTime?.label || '';
+            const timeId = session.TimeId || null;
+            
+            if (!formattedData[dayName]) {
+              formattedData[dayName] = {};
+            }
 
-          formattedData[dayName][timeSlot] = {
-            moduleId: session.moduleId,
-            name: session.Module?.moduleName || '',
-            groupId: session.groupId,
-            group: session.Group?.groupName || '',
-            type: session.GroupType?.typeName || '',
-            typeId: session.typeId || '',
-            year: session.Module?.SchoolYear?.yearName || session.Group?.Section?.SchoolYear?.yearName || '',
-            yearId: session.Module?.yearId || session.Group?.Section?.SchoolYear?.yearId || '',
-            degree: session.Module?.SchoolYear?.Degree?.degreeName || session.Group?.Section?.SchoolYear?.Degree?.degreeName || '',
-            degreeId: session.Module?.SchoolYear?.degreeId || session.Group?.Section?.SchoolYear?.Degree?.degreeId || '',
-            sectionId: session.Group?.Section?.sectionId || '',
-            classroomId: session.classId,
-            room: {
-              roomNumber: session.Classroom?.ClassNumber || '',
-              location: session.Classroom?.Location || '',
-              classId: session.classId
-            },
-            timeId: timeId,
-            timeLabel: timeSlot,
-            dayId: session.dayId,
-            sessionStructureId: session.Session_structure_id || generateAlphaId()
-          };
+            formattedData[dayName][timeSlot] = {
+              moduleId: session.moduleId,
+              name: session.Module?.moduleName || '',
+              groupId: session.groupId,
+              group: session.Group?.groupName || '',
+              type: session.GroupType?.typeName || '',
+              typeId: session.typeId || '',
+              year: session.Module?.SchoolYear?.yearName || session.Group?.Section?.SchoolYear?.yearName || '',
+              yearId: session.Module?.yearId || session.Group?.Section?.SchoolYear?.yearId || '',
+              degree: session.Module?.SchoolYear?.Degree?.degreeName || session.Group?.Section?.SchoolYear?.Degree?.degreeName || '',
+              degreeId: session.Module?.SchoolYear?.degreeId || session.Group?.Section?.SchoolYear?.Degree?.degreeId || '',
+              sectionId: session.Group?.Section?.sectionId || '',
+              classroomId: session.classId,
+              room: {
+                roomNumber: session.Classroom?.ClassNumber || '',
+                location: session.Classroom?.Location || '',
+                classId: session.classId
+              },
+              timeId: timeId,
+              timeLabel: timeSlot,
+              dayId: session.dayId,
+              sessionStructureId: session.Session_structure_id || generateAlphaId()
+            };
+          }
         });
 
         setTimetableData(formattedData);
@@ -776,21 +800,14 @@ export default function TimeTable() {
           <div className="relative">
             <div className="flex items-center gap-2 bg-white border border-gray-300 rounded-lg px-4 py-2">
               <Filter size={18} className="text-gray-500" />
-              <select
-                value={selectedSemester || ''}
-                onChange={(e) => setSelectedSemester(Number(e.target.value))}
-                className="appearance-none bg-transparent pr-8 focus:outline-none"
-              >
-                {semesters
-                  .filter(semester => 
-                    !currentAcademicYear || semester.AcademicId === currentAcademicYear.AcademicId
-                  )
-                  .map(semester => (
-                    <option key={semester.SemesterId} value={semester.SemesterId}>
-                      {semester.label}
-                    </option>
-                  ))}
-              </select>
+              <span className="text-gray-700 font-medium">
+                {
+                  (() => {
+                    const currentSemester = semesters.find(s => s.SemesterId === selectedSemester);
+                    return currentSemester ? currentSemester.label : "No Semester";
+                  })()
+                }
+              </span>
             </div>
           </div>
           <button
@@ -915,6 +932,7 @@ export default function TimeTable() {
           teacherId={user?.teacherId}
           classrooms={classrooms}
           selectedSemester={selectedSemester}
+          teacherBranchId={user?.branchId} // <-- Make sure user has branchId
         />
       )}
     </div>
